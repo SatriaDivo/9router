@@ -11,6 +11,7 @@ import {
   Badge,
   ModelSelectModal,
   Select,
+  PageShell,
 } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 
@@ -483,7 +484,7 @@ export default function PromptInjectionPage() {
   }, [rules]);
 
   return (
-    <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
+    <PageShell width="full">
       {/* Header Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -529,41 +530,41 @@ export default function PromptInjectionPage() {
 
       {/* Metrics Bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="p-3.5 rounded-xl border border-border-subtle bg-surface-1 flex flex-col gap-1">
+        <Card padding="sm" className="flex flex-col gap-1">
           <span className="text-[11px] font-medium text-text-muted uppercase tracking-wider">Total Rules</span>
           <div className="flex items-baseline gap-2">
             <span className="text-2xl font-bold text-text-main">{stats.total}</span>
             <span className="text-xs text-text-muted">rules</span>
           </div>
-        </div>
+        </Card>
 
-        <div className="p-3.5 rounded-xl border border-border-subtle bg-surface-1 flex flex-col gap-1">
+        <Card padding="sm" className="flex flex-col gap-1">
           <span className="text-[11px] font-medium text-text-muted uppercase tracking-wider">Active Rules</span>
           <div className="flex items-baseline gap-2">
             <span className="text-2xl font-bold text-emerald-500">{stats.active}</span>
             <span className="text-xs text-text-muted">enforced</span>
           </div>
-        </div>
+        </Card>
 
-        <div className="p-3.5 rounded-xl border border-border-subtle bg-surface-1 flex flex-col gap-1">
+        <Card padding="sm" className="flex flex-col gap-1">
           <span className="text-[11px] font-medium text-text-muted uppercase tracking-wider">Combos Covered</span>
           <div className="flex items-baseline gap-2">
             <span className="text-2xl font-bold text-sky-500">{stats.combosCount}</span>
             <span className="text-xs text-text-muted">combos</span>
           </div>
-        </div>
+        </Card>
 
-        <div className="p-3.5 rounded-xl border border-border-subtle bg-surface-1 flex flex-col gap-1">
+        <Card padding="sm" className="flex flex-col gap-1">
           <span className="text-[11px] font-medium text-text-muted uppercase tracking-wider">Models Covered</span>
           <div className="flex items-baseline gap-2">
             <span className="text-2xl font-bold text-primary">{stats.modelsCount}</span>
             <span className="text-xs text-text-muted">patterns</span>
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* Filter & Search Bar */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-2.5 rounded-xl border border-border-subtle bg-surface-1">
+      <Card padding="sm" className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         <div className="relative flex-1">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-text-muted">
             search
@@ -601,7 +602,7 @@ export default function PromptInjectionPage() {
             <option value="inactive">Inactive Only</option>
           </select>
         </div>
-      </div>
+      </Card>
 
       {/* Rules List */}
       {loading ? (
@@ -610,7 +611,7 @@ export default function PromptInjectionPage() {
           <p>Loading prompt injection rules...</p>
         </div>
       ) : filteredRules.length === 0 ? (
-        <div className="flex flex-col items-center justify-center p-12 text-center rounded-2xl border border-dashed border-border-subtle bg-surface-1">
+        <Card padding="lg" className="flex flex-col items-center justify-center p-12 text-center border-dashed">
           <div className="size-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary mb-3">
             <span className="material-symbols-outlined text-[24px]">tune</span>
           </div>
@@ -626,29 +627,30 @@ export default function PromptInjectionPage() {
           </p>
           {!searchQuery && statusFilter === "all" && targetFilter === "all" && (
             <Button
-              variant="primary"
               size="sm"
+              variant="primary"
               onClick={handleOpenCreate}
               className="mt-4 gap-1.5 text-xs"
             >
               <span className="material-symbols-outlined text-[16px]">add</span>
-              Create First Injection
+              Create First Rule
             </Button>
           )}
-        </div>
+        </Card>
       ) : (
         <div className="grid grid-cols-1 gap-3.5">
           {filteredRules.map((rule) => {
             const posConfig = POSITION_LABELS[rule.position] || POSITION_LABELS.system_prepend;
 
             return (
-              <div
+              <Card
                 key={rule.id}
-                className={`relative group rounded-xl border transition-all ${
+                padding="md"
+                className={`transition-all ${
                   rule.enabled
-                    ? "border-border-subtle bg-surface-1 hover:border-primary/40"
-                    : "border-border-subtle/60 bg-surface-1/50 opacity-70"
-                } p-4 flex flex-col gap-3.5`}
+                    ? "hover:border-primary/40"
+                    : "opacity-75"
+                } flex flex-col gap-3.5`}
               >
                 {/* Top Row: Name, Badges, Status Toggle */}
                 <div className="flex items-start justify-between gap-3">
@@ -825,14 +827,14 @@ export default function PromptInjectionPage() {
                     {rule.content}
                   </pre>
                 </div>
-              </div>
+              </Card>
             );
           })}
         </div>
       )}
 
       {/* Guide Section */}
-      <div className="mt-2 rounded-xl border border-border-subtle bg-surface-1 p-4 flex flex-col gap-2">
+      <Card padding="md" className="mt-2 flex flex-col gap-2">
         <div className="flex items-center gap-2 text-xs font-semibold text-text-main">
           <span className="material-symbols-outlined text-[16px] text-primary">info</span>
           AI Gateway Prompt Injection Guide
@@ -851,14 +853,14 @@ export default function PromptInjectionPage() {
             Use the built-in variable templates <code>{"{{model}}"}</code>, <code>{"{{provider}}"}</code>, <code>{"{{date}}"}</code>, and <code>{"{{time}}"}</code>, evaluated automatically when a request arrives.
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* Modal Create / Edit Rule */}
       <Modal
         isOpen={showFormModal}
         onClose={() => setShowFormModal(false)}
         title={editingRule ? "Edit Prompt Injection Rule" : "Create Prompt Injection Rule"}
-        size="lg"
+        size="xl"
       >
         <form onSubmit={handleSaveForm} className="flex flex-col gap-4">
           {formError && (
@@ -968,7 +970,7 @@ export default function PromptInjectionPage() {
                         className={`px-2.5 py-1 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition-colors ${
                           isSelected
                             ? "bg-sky-500/20 text-sky-600 dark:text-sky-300 border-sky-500/40"
-                            : "bg-surface-1 text-text-muted border-border-subtle hover:text-text-main"
+                            : "bg-surface text-text-muted border-border-subtle hover:text-text-main"
                         }`}
                       >
                         <span className="material-symbols-outlined text-[14px]">
@@ -1073,7 +1075,7 @@ export default function PromptInjectionPage() {
                     className={`px-2 py-0.5 rounded text-[11px] font-medium border transition-colors ${
                       formData.targetKeys.length === 0
                         ? "bg-amber-500/20 text-amber-600 dark:text-amber-300 border-amber-500/40"
-                        : "bg-surface-1 text-text-muted border-border-subtle hover:text-text-main"
+                        : "bg-surface text-text-muted border-border-subtle hover:text-text-main"
                     }`}
                   >
                     All API Keys (Default)
@@ -1104,7 +1106,7 @@ export default function PromptInjectionPage() {
                         className={`px-2 py-1 rounded-lg text-xs border flex items-center gap-1.5 transition-colors ${
                           isSelected
                             ? "bg-amber-500/20 text-amber-600 dark:text-amber-300 border-amber-500/40 font-medium"
-                            : "bg-surface-1 text-text-muted border-border-subtle hover:text-text-main"
+                            : "bg-surface text-text-muted border-border-subtle hover:text-text-main"
                         }`}
                       >
                         <span className="material-symbols-outlined text-[13px]">
@@ -1152,7 +1154,7 @@ export default function PromptInjectionPage() {
                   className={`p-2 rounded-xl border text-left flex flex-col gap-0.5 transition-all ${
                     formData.matchCondition.type === opt.type
                       ? "border-indigo-500/50 bg-indigo-500/10 text-indigo-500 font-semibold"
-                      : "border-border-subtle bg-surface-1 text-text-muted hover:text-text-main"
+                      : "border-border-subtle bg-surface text-text-muted hover:text-text-main"
                   }`}
                 >
                   <span className="text-xs">{opt.label}</span>
@@ -1357,20 +1359,23 @@ export default function PromptInjectionPage() {
         isOpen={showPlayground}
         onClose={() => setShowPlayground(false)}
         title="Prompt Injection Gateway Simulator"
-        size="lg"
+        size="full"
       >
         <div className="flex flex-col gap-4">
           <p className="text-xs text-text-muted">
             Test how a request is processed and modified by the gateway injection rules before it actually reaches the upstream model.
           </p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-text-main">Simulate Target (Combo/Model)</label>
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 p-3.5 rounded-xl border border-border-subtle bg-surface-2 items-end">
+            <div className="sm:col-span-5 flex flex-col gap-1.5 min-w-0">
+              <label className="text-xs font-semibold text-text-main flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[15px] text-primary">route</span>
+                Target (Combo / Model)
+              </label>
               <select
                 value={testTarget}
                 onChange={(e) => setTestTarget(e.target.value)}
-                className="px-2.5 py-1.5 text-xs rounded-xl border border-border-subtle bg-surface-2 text-text-main focus:outline-none"
+                className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-surface text-text-main focus:outline-none focus:ring-1 focus:ring-primary truncate"
               >
                 <optgroup label="Combos">
                   {combos.map((c) => (
@@ -1388,12 +1393,15 @@ export default function PromptInjectionPage() {
               </select>
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-text-main">Simulate API Key (Caller)</label>
+            <div className="sm:col-span-4 flex flex-col gap-1.5 min-w-0">
+              <label className="text-xs font-semibold text-text-main flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[15px] text-amber-500">key</span>
+                Caller API Key
+              </label>
               <select
                 value={testApiKey}
                 onChange={(e) => setTestApiKey(e.target.value)}
-                className="px-2.5 py-1.5 text-xs rounded-xl border border-border-subtle bg-surface-2 text-text-main focus:outline-none"
+                className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-surface text-text-main focus:outline-none focus:ring-1 focus:ring-primary truncate"
               >
                 <option value="">(All / Anonymous / Local)</option>
                 {apiKeys.map((k) => (
@@ -1404,43 +1412,49 @@ export default function PromptInjectionPage() {
               </select>
             </div>
 
-            <div className="flex items-end">
+            <div className="sm:col-span-3">
               <Button
                 variant="primary"
-                size="sm"
+                size="md"
                 onClick={() => runPlaygroundTest()}
                 disabled={testing}
-                className="w-full gap-1.5 text-xs"
+                className="w-full gap-2 text-xs h-[38px] justify-center"
               >
                 {testing ? (
                   <span className="inline-block size-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
                 ) : (
-                  <span className="material-symbols-outlined text-[16px]">play_arrow</span>
+                  <span className="material-symbols-outlined text-[18px]">play_arrow</span>
                 )}
                 Run Simulation
               </Button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-text-main">Incoming System Prompt (Original)</label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-text-main flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[15px] text-text-muted">terminal</span>
+                Incoming System Prompt (Original)
+              </label>
               <textarea
                 value={testSystemMsg}
                 onChange={(e) => setTestSystemMsg(e.target.value)}
-                rows={3}
-                className="w-full p-2 text-xs font-mono rounded-lg border border-border-subtle bg-surface-2 text-text-main focus:outline-none"
+                rows={4}
+                className="w-full p-2.5 text-xs font-mono rounded-lg border border-border bg-surface text-text-main focus:outline-none focus:ring-1 focus:ring-primary leading-relaxed"
                 placeholder="Pesan system dari client..."
               />
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-text-main">Incoming User Prompt</label>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-text-main flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[15px] text-text-muted">person</span>
+                Incoming User Prompt
+              </label>
               <textarea
                 value={testUserMsg}
                 onChange={(e) => setTestUserMsg(e.target.value)}
-                rows={3}
-                className="w-full p-2 text-xs font-mono rounded-lg border border-border-subtle bg-surface-2 text-text-main focus:outline-none"
+                rows={4}
+                className="w-full p-2.5 text-xs font-mono rounded-lg border border-border bg-surface text-text-main focus:outline-none focus:ring-1 focus:ring-primary leading-relaxed"
                 placeholder="Pesan pertanyaan dari user..."
               />
             </div>
@@ -1468,14 +1482,14 @@ export default function PromptInjectionPage() {
               {testResult.promptText && (
                 <div className="text-[11px] text-text-muted">
                   <span className="font-medium text-text-main">Interpolated Prompt: </span>
-                  <span className="font-mono bg-surface-1 px-1.5 py-0.5 rounded text-text-main">
+                  <span className="font-mono bg-surface px-1.5 py-0.5 rounded text-text-main border border-border-subtle">
                     {testResult.promptText}
                   </span>
                 </div>
               )}
 
-              <div className="rounded-lg bg-surface-1 border border-border-subtle p-3 text-xs font-mono text-text-main max-h-56 overflow-y-auto custom-scrollbar">
-                <span className="text-[10px] text-text-muted uppercase tracking-wider block mb-1">
+              <div className="rounded-lg bg-surface border border-border-subtle p-3 text-xs font-mono text-text-main max-h-56 overflow-y-auto custom-scrollbar">
+                <span className="text-[10px] text-text-muted uppercase tracking-wider block mb-1 font-semibold">
                   Transformed Body (Sent to Upstream):
                 </span>
                 <pre className="whitespace-pre-wrap leading-relaxed text-[11px]">
@@ -1486,6 +1500,6 @@ export default function PromptInjectionPage() {
           )}
         </div>
       </Modal>
-    </div>
+    </PageShell>
   );
 }
