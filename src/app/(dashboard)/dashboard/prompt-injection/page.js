@@ -232,8 +232,21 @@ export default function PromptInjectionPage() {
     setSaving(true);
     setFormError("");
     try {
+      const cleanTargetModels = (formData.targetModels || [])
+        .map((m) => (typeof m === "string" ? m : (m?.value || m?.name || m?.id || "")).trim())
+        .filter(Boolean);
+      const cleanTargetCombos = (formData.targetCombos || [])
+        .map((c) => (typeof c === "string" ? c : (c?.name || c?.id || "")).trim())
+        .filter(Boolean);
+      const cleanTargetKeys = (formData.targetKeys || [])
+        .map((k) => (typeof k === "string" ? k : (k?.id || k?.key || "")).trim())
+        .filter(Boolean);
+
       const payload = {
         ...formData,
+        targetModels: cleanTargetModels,
+        targetCombos: cleanTargetCombos,
+        targetKeys: cleanTargetKeys,
         id: editingRule ? editingRule.id : undefined,
       };
 
@@ -335,10 +348,14 @@ export default function PromptInjectionPage() {
     }
   };
 
-  const removeTargetModel = (modelName) => {
+  const removeTargetModel = (modelToRemove) => {
+    const toRemove = typeof modelToRemove === "string" ? modelToRemove : (modelToRemove?.value || modelToRemove?.name || modelToRemove?.id || "");
     setFormData((prev) => ({
       ...prev,
-      targetModels: prev.targetModels.filter((m) => m !== modelName),
+      targetModels: prev.targetModels.filter((m) => {
+        const val = typeof m === "string" ? m : (m?.value || m?.name || m?.id || "");
+        return val !== toRemove;
+      }),
     }));
   };
 
@@ -770,15 +787,18 @@ export default function PromptInjectionPage() {
                     ))}
 
                     {/* Models */}
-                    {(rule.targetModels || []).map((model) => (
-                      <span
-                        key={model}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 font-mono text-[10.5px]"
-                      >
-                        <span className="material-symbols-outlined text-[12px]">smart_toy</span>
-                        {model}
-                      </span>
-                    ))}
+                    {(rule.targetModels || []).map((model, idx) => {
+                      const modelStr = typeof model === "string" ? model : (model?.value || model?.name || model?.id || String(model));
+                      return (
+                        <span
+                          key={`${modelStr}-${idx}`}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 font-mono text-[10.5px]"
+                        >
+                          <span className="material-symbols-outlined text-[12px]">smart_toy</span>
+                          {modelStr}
+                        </span>
+                      );
+                    })}
 
                     {(rule.targetCombos || []).length === 0 && (rule.targetModels || []).length === 0 && (
                       <span className="text-text-muted/60 italic text-[11px]">No targets specified</span>
@@ -1005,21 +1025,24 @@ export default function PromptInjectionPage() {
 
               {formData.targetModels.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mt-2">
-                  {formData.targetModels.map((m) => (
-                    <span
-                      key={m}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-500/15 text-purple-600 dark:text-purple-300 border border-purple-500/30 text-xs font-mono"
-                    >
-                      {m}
-                      <button
-                        type="button"
-                        onClick={() => removeTargetModel(m)}
-                        className="hover:text-red-500 ml-0.5"
+                  {formData.targetModels.map((m, idx) => {
+                    const modelStr = typeof m === "string" ? m : (m?.value || m?.name || m?.id || String(m));
+                    return (
+                      <span
+                        key={`${modelStr}-${idx}`}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-500/15 text-purple-600 dark:text-purple-300 border border-purple-500/30 text-xs font-mono"
                       >
-                        <span className="material-symbols-outlined text-[13px]">close</span>
-                      </button>
-                    </span>
-                  ))}
+                        {modelStr}
+                        <button
+                          type="button"
+                          onClick={() => removeTargetModel(m)}
+                          className="hover:text-red-500 ml-0.5"
+                        >
+                          <span className="material-symbols-outlined text-[13px]">close</span>
+                        </button>
+                      </span>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1303,16 +1326,18 @@ export default function PromptInjectionPage() {
           isOpen={showModelPicker}
           onClose={() => setShowModelPicker(false)}
           activeProviders={activeProviders}
-          onSelect={(modelId) => {
-            if (modelId && !formData.targetModels.includes(modelId)) {
+          onSelect={(model) => {
+            const val = typeof model === "string" ? model : (model?.value || model?.name || model?.id || "");
+            if (val && !formData.targetModels.includes(val)) {
               setFormData((prev) => ({
                 ...prev,
-                targetModels: [...prev.targetModels, modelId],
+                targetModels: [...prev.targetModels, val],
               }));
             }
             setShowModelPicker(false);
           }}
           selectedModel=""
+          title="Select Target Model"
         />
       )}
 
