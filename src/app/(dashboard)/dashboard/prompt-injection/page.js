@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Card,
   Button,
@@ -63,6 +63,13 @@ const TARGET_TYPE_LABELS = {
   custom: { label: "Custom (Both)", desc: "A specific combination of models and combos" },
 };
 
+const POPULAR_MODELS = [
+  "openai/gpt-4o",
+  "claude-3-7-sonnet",
+  "deepseek/deepseek-chat",
+  "gemini-2.5-pro",
+];
+
 export default function PromptInjectionPage() {
   const [rules, setRules] = useState([]);
   const [combos, setCombos] = useState([]);
@@ -88,6 +95,63 @@ export default function PromptInjectionPage() {
   const [testSystemMsg, setTestSystemMsg] = useState("You are an AI assistant.");
   const [testResult, setTestResult] = useState(null);
   const [testing, setTesting] = useState(false);
+
+  // Playground custom dropdowns
+  const [showTargetDropdown, setShowTargetDropdown] = useState(false);
+  const [targetSearch, setTargetSearch] = useState("");
+  const targetDropdownRef = useRef(null);
+
+  const [showKeyDropdown, setShowKeyDropdown] = useState(false);
+  const [keySearch, setKeySearch] = useState("");
+  const keyDropdownRef = useRef(null);
+
+  const filteredCombos = useMemo(() => {
+    if (!targetSearch) return combos;
+    const q = targetSearch.toLowerCase();
+    return combos.filter((c) => (c.name || "").toLowerCase().includes(q));
+  }, [combos, targetSearch]);
+
+  const filteredModels = useMemo(() => {
+    if (!targetSearch) return POPULAR_MODELS;
+    const q = targetSearch.toLowerCase();
+    return POPULAR_MODELS.filter((m) => m.toLowerCase().includes(q));
+  }, [targetSearch]);
+
+  const filteredApiKeys = useMemo(() => {
+    if (!keySearch) return apiKeys;
+    const q = keySearch.toLowerCase();
+    return apiKeys.filter(
+      (k) =>
+        (k.name && k.name.toLowerCase().includes(q)) ||
+        (k.key && k.key.toLowerCase().includes(q)) ||
+        (k.id && k.id.toLowerCase().includes(q))
+    );
+  }, [apiKeys, keySearch]);
+
+  useEffect(() => {
+    if (!showTargetDropdown && !showKeyDropdown) return;
+    const handleClickOutside = (e) => {
+      if (targetDropdownRef.current && !targetDropdownRef.current.contains(e.target)) {
+        setShowTargetDropdown(false);
+      }
+      if (keyDropdownRef.current && !keyDropdownRef.current.contains(e.target)) {
+        setShowKeyDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showTargetDropdown, showKeyDropdown]);
+
+  const selectedKeyObj = useMemo(() => {
+    if (!testApiKey) return null;
+    return apiKeys.find((k) => (k.key || k.id) === testApiKey || k.id === testApiKey);
+  }, [apiKeys, testApiKey]);
+
+  const selectedKeyLabel = useMemo(() => {
+    if (!testApiKey) return "(All / Anonymous / Local)";
+    if (!selectedKeyObj) return testApiKey;
+    return `${selectedKeyObj.name || "API Key"} (${selectedKeyObj.key ? selectedKeyObj.key.slice(0, 8) + "..." : selectedKeyObj.id.slice(0, 8) + "..."})`;
+  }, [testApiKey, selectedKeyObj]);
 
   // Form Fields
   const [formData, setFormData] = useState({
@@ -1367,49 +1431,267 @@ export default function PromptInjectionPage() {
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 p-3.5 rounded-xl border border-border-subtle bg-surface-2 items-end">
-            <div className="sm:col-span-5 flex flex-col gap-1.5 min-w-0">
-              <label className="text-xs font-semibold text-text-main flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[15px] text-primary">route</span>
-                Target (Combo / Model)
+            {/* Custom Target Dropdown */}
+            <div className="sm:col-span-5 flex flex-col gap-1.5 min-w-0 relative" ref={targetDropdownRef}>
+              <label className="text-xs font-semibold text-text-main flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[15px] text-primary">route</span>
+                  Target (Combo / Model)
+                </span>
+                {combos.length > 0 && (
+                  <span className="text-[10px] font-normal text-text-muted">
+                    {combos.length} combos
+                  </span>
+                )}
               </label>
-              <select
-                value={testTarget}
-                onChange={(e) => setTestTarget(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-surface text-text-main focus:outline-none focus:ring-1 focus:ring-primary truncate"
+
+              {/* Trigger Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTargetDropdown((v) => !v);
+                  setShowKeyDropdown(false);
+                }}
+                className="w-full flex items-center justify-between px-3 py-2 text-xs rounded-lg border border-border bg-surface hover:bg-surface-3 text-text-main transition-colors focus:outline-none focus:ring-1 focus:ring-primary h-[38px] cursor-pointer"
               >
-                <optgroup label="Combos">
-                  {combos.map((c) => (
-                    <option key={c.name} value={c.name}>
-                      [Combo] {c.name}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Popular Models">
-                  <option value="openai/gpt-4o">openai/gpt-4o</option>
-                  <option value="claude-3-7-sonnet">claude-3-7-sonnet</option>
-                  <option value="deepseek/deepseek-chat">deepseek/deepseek-chat</option>
-                  <option value="gemini-2.5-pro">gemini-2.5-pro</option>
-                </optgroup>
-              </select>
+                <div className="flex items-center gap-2 truncate min-w-0">
+                  <span className="material-symbols-outlined text-[16px] text-primary shrink-0">
+                    {combos.some((c) => c.name === testTarget) ? "alt_route" : "smart_toy"}
+                  </span>
+                  <span className="truncate font-mono font-medium">
+                    {testTarget || "Select a Combo or Model"}
+                  </span>
+                </div>
+                <span className={`material-symbols-outlined text-[18px] text-text-muted shrink-0 transition-transform duration-150 ${showTargetDropdown ? "rotate-180" : ""}`}>
+                  expand_more
+                </span>
+              </button>
+
+              {/* Dropdown Panel with Search & Custom Scroll */}
+              {showTargetDropdown && (
+                <div className="absolute left-0 top-full mt-1.5 z-50 w-full sm:min-w-[320px] rounded-xl border border-border bg-surface shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-100 flex flex-col">
+                  {/* Sticky Search Filter */}
+                  <div className="p-2 border-b border-border-subtle bg-surface-2 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[16px] text-text-muted">search</span>
+                    <input
+                      type="text"
+                      value={targetSearch}
+                      onChange={(e) => setTargetSearch(e.target.value)}
+                      placeholder="Filter combo or model..."
+                      className="w-full bg-transparent text-xs text-text-main focus:outline-none placeholder:text-text-muted/60"
+                      autoFocus
+                    />
+                    {targetSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setTargetSearch("")}
+                        className="text-text-muted hover:text-text-main text-xs p-0.5"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">close</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Scrollable List Container (max-h-60 overflow-y-auto custom-scrollbar) */}
+                  <div className="max-h-60 overflow-y-auto custom-scrollbar p-1.5 flex flex-col gap-1">
+                    {/* Combos Group */}
+                    {filteredCombos.length > 0 && (
+                      <div className="flex flex-col">
+                        <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-text-muted/80 flex items-center gap-1.5">
+                          <span className="material-symbols-outlined text-[13px] text-sky-500">alt_route</span>
+                          Combos ({filteredCombos.length})
+                        </div>
+                        {filteredCombos.map((c) => {
+                          const isSelected = testTarget === c.name;
+                          return (
+                            <button
+                              key={c.name}
+                              type="button"
+                              onClick={() => {
+                                setTestTarget(c.name);
+                                setShowTargetDropdown(false);
+                              }}
+                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-mono text-left transition-colors cursor-pointer ${
+                                isSelected
+                                  ? "bg-primary/15 text-primary font-semibold"
+                                  : "text-text-main hover:bg-surface-2"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 truncate">
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/20 font-sans font-medium shrink-0">
+                                  Combo
+                                </span>
+                                <span className="truncate">{c.name}</span>
+                              </div>
+                              {isSelected && (
+                                <span className="material-symbols-outlined text-[15px] text-primary shrink-0 ml-1">check</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Popular Models Group */}
+                    {filteredModels.length > 0 && (
+                      <div className="flex flex-col mt-1 pt-1 border-t border-border-subtle">
+                        <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-text-muted/80 flex items-center gap-1.5">
+                          <span className="material-symbols-outlined text-[13px] text-purple-500">smart_toy</span>
+                          Popular Models
+                        </div>
+                        {filteredModels.map((m) => {
+                          const isSelected = testTarget === m;
+                          return (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => {
+                                setTestTarget(m);
+                                setShowTargetDropdown(false);
+                              }}
+                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-mono text-left transition-colors cursor-pointer ${
+                                isSelected
+                                  ? "bg-primary/15 text-primary font-semibold"
+                                  : "text-text-main hover:bg-surface-2"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 truncate">
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/20 font-sans font-medium shrink-0">
+                                  Model
+                                </span>
+                                <span className="truncate">{m}</span>
+                              </div>
+                              {isSelected && (
+                                <span className="material-symbols-outlined text-[15px] text-primary shrink-0 ml-1">check</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Fallback to custom input if typed */}
+                    {targetSearch && !filteredCombos.some((c) => c.name.toLowerCase() === targetSearch.toLowerCase()) && !filteredModels.includes(targetSearch) && (
+                      <div className="mt-1 pt-1 border-t border-border-subtle">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTestTarget(targetSearch.trim());
+                            setShowTargetDropdown(false);
+                          }}
+                          className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-mono text-left bg-surface-2 hover:bg-primary/10 text-primary transition-colors cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-[15px]">add</span>
+                          <span className="truncate">Use custom: <strong>{targetSearch.trim()}</strong></span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="sm:col-span-4 flex flex-col gap-1.5 min-w-0">
+            {/* Custom Caller API Key Dropdown */}
+            <div className="sm:col-span-4 flex flex-col gap-1.5 min-w-0 relative" ref={keyDropdownRef}>
               <label className="text-xs font-semibold text-text-main flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-[15px] text-amber-500">key</span>
                 Caller API Key
               </label>
-              <select
-                value={testApiKey}
-                onChange={(e) => setTestApiKey(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-surface text-text-main focus:outline-none focus:ring-1 focus:ring-primary truncate"
+
+              {/* Trigger Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowKeyDropdown((v) => !v);
+                  setShowTargetDropdown(false);
+                }}
+                className="w-full flex items-center justify-between px-3 py-2 text-xs rounded-lg border border-border bg-surface hover:bg-surface-3 text-text-main transition-colors focus:outline-none focus:ring-1 focus:ring-primary h-[38px] cursor-pointer"
               >
-                <option value="">(All / Anonymous / Local)</option>
-                {apiKeys.map((k) => (
-                  <option key={k.id} value={k.key || k.id}>
-                    {k.name || "API Key"} ({k.key ? k.key.slice(0, 8) + "..." : k.id})
-                  </option>
-                ))}
-              </select>
+                <div className="flex items-center gap-2 truncate min-w-0">
+                  <span className="material-symbols-outlined text-[16px] text-amber-500 shrink-0">key</span>
+                  <span className="truncate font-medium">
+                    {selectedKeyLabel}
+                  </span>
+                </div>
+                <span className={`material-symbols-outlined text-[18px] text-text-muted shrink-0 transition-transform duration-150 ${showKeyDropdown ? "rotate-180" : ""}`}>
+                  expand_more
+                </span>
+              </button>
+
+              {/* Dropdown Panel with Search & Custom Scroll */}
+              {showKeyDropdown && (
+                <div className="absolute left-0 top-full mt-1.5 z-50 w-full sm:min-w-[280px] rounded-xl border border-border bg-surface shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-100 flex flex-col">
+                  {apiKeys.length > 4 && (
+                    <div className="p-2 border-b border-border-subtle bg-surface-2 flex items-center gap-2">
+                      <span className="material-symbols-outlined text-[16px] text-text-muted">search</span>
+                      <input
+                        type="text"
+                        value={keySearch}
+                        onChange={(e) => setKeySearch(e.target.value)}
+                        placeholder="Filter API key..."
+                        className="w-full bg-transparent text-xs text-text-main focus:outline-none placeholder:text-text-muted/60"
+                        autoFocus
+                      />
+                    </div>
+                  )}
+
+                  <div className="max-h-56 overflow-y-auto custom-scrollbar p-1.5 flex flex-col gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTestApiKey("");
+                        setShowKeyDropdown(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs text-left transition-colors cursor-pointer ${
+                        !testApiKey
+                          ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 font-semibold"
+                          : "text-text-main hover:bg-surface-2"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <span className="material-symbols-outlined text-[15px] text-emerald-500">public</span>
+                        <span className="truncate">(All / Anonymous / Local)</span>
+                      </div>
+                      {!testApiKey && (
+                        <span className="material-symbols-outlined text-[15px] text-amber-500 shrink-0">check</span>
+                      )}
+                    </button>
+
+                    {filteredApiKeys.map((k) => {
+                      const val = k.key || k.id;
+                      const isSelected = testApiKey === val || testApiKey === k.id;
+                      return (
+                        <button
+                          key={k.id}
+                          type="button"
+                          onClick={() => {
+                            setTestApiKey(val);
+                            setShowKeyDropdown(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs text-left transition-colors cursor-pointer ${
+                            isSelected
+                              ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 font-semibold"
+                              : "text-text-main hover:bg-surface-2"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            <span className="material-symbols-outlined text-[14px] text-amber-500/70">key</span>
+                            <span className="truncate">{k.name || "API Key"}</span>
+                            {k.key && (
+                              <span className="text-[10px] font-mono text-text-muted opacity-70">
+                                ({k.key.slice(0, 8)}...)
+                              </span>
+                            )}
+                          </div>
+                          {isSelected && (
+                            <span className="material-symbols-outlined text-[15px] text-amber-500 shrink-0">check</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="sm:col-span-3">
