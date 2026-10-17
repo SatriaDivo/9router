@@ -6,11 +6,12 @@ import {
   updatePromptInjection,
   deletePromptInjection,
   reorderPromptInjections,
+  applyPromptInjectionsToBody,
   isRuleMatching,
   interpolateVariables,
   executeInjection,
   extractUserText,
-} from "@/lib/db/repos/promptInjectionRepo.js";
+} from "../../../lib/db/repos/promptInjectionRepo.js";
 
 // GET /api/prompt-injection - list all rules
 export async function GET() {
@@ -28,7 +29,28 @@ export async function POST(request) {
   try {
     const body = await request.json();
 
-    // Dry-run simulation mode
+    // Full gateway pipeline simulation
+    if (body.simulate || body.action === "simulate") {
+      const sampleBody = JSON.parse(JSON.stringify(body.body || {
+        messages: [{ role: "user", content: "Hello world" }]
+      }));
+      const context = {
+        modelStr: body.model || "openai/gpt-4o",
+        comboName: body.comboName || "",
+        apiKey: body.apiKey || "",
+        provider: (body.model || "").includes("/") ? body.model.split("/")[0] : "",
+        model: (body.model || "").includes("/") ? body.model.split("/")[1] : body.model || "gpt-4o",
+      };
+
+      const injectionRes = await applyPromptInjectionsToBody(sampleBody, context);
+      return NextResponse.json({
+        modified: injectionRes.modified,
+        injectedRules: injectionRes.injectedRules,
+        body: sampleBody,
+      });
+    }
+
+    // Dry-run simulation mode for a specific rule
     if (body.action === "test") {
       const { rule, sampleBody, context } = body;
       const testBody = JSON.parse(JSON.stringify(sampleBody || {
@@ -66,7 +88,7 @@ export async function POST(request) {
       name,
       description: body.description,
       enabled: body.enabled !== false,
-      targetType: body.targetType || "models",
+      targetType: body.targetType || "all",
       targetCombos: body.targetCombos || [],
       targetModels: body.targetModels || [],
       targetKeys: body.targetKeys || [],

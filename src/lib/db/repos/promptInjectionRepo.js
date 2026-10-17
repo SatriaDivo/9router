@@ -4,6 +4,16 @@ import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 
 const SCOPE = "promptInjections";
 
+// In-memory cache for ultra-low latency gateway request routing (0ms disk I/O)
+let memoryCache = null;
+let memoryCacheExpiry = 0;
+const CACHE_TTL_MS = 60_000;
+
+export function invalidatePromptInjectionCache() {
+  memoryCache = null;
+  memoryCacheExpiry = 0;
+}
+
 function rowToRule(row) {
   if (!row) return null;
   const val = parseJson(row.value, {});
@@ -20,7 +30,7 @@ function rowToRule(row) {
     targetKeys: Array.isArray(val.targetKeys) ? val.targetKeys : [],
     // Prompt keyword / regex match condition
     matchCondition: {
-      type: val.matchCondition?.type || "always", // "always" | "contains" | "regex"
+      type: val.matchCondition?.type || "always", // "always" | "contains" | "not_contains" | "regex"
       pattern: typeof val.matchCondition?.pattern === "string" ? val.matchCondition.pattern : "",
       caseSensitive: !!val.matchCondition?.caseSensitive,
     },
@@ -28,12 +38,18 @@ function rowToRule(row) {
     position: val.position || "system_prepend",
     content: typeof val.content === "string" ? val.content : "",
     priority: Number.isFinite(val.priority) ? val.priority : 10,
+    hitCount: Number.isFinite(val.hitCount) ? val.hitCount : 0,
+    lastTriggeredAt: val.lastTriggeredAt || null,
     createdAt: val.createdAt || new Date().toISOString(),
     updatedAt: val.updatedAt || new Date().toISOString(),
   };
 }
 
-export async function getPromptInjections() {
+export async function getPromptInjections(useCache = false) {
+  if (useCache && memoryCache && Date.now() < memoryCacheExpiry) {
+    return memoryCache;
+  }
+
   const db = await getAdapter();
   const rows = db.all(`SELECT key, value FROM kv WHERE scope = ?`, [SCOPE]);
   const rules = rows
@@ -43,6 +59,9 @@ export async function getPromptInjections() {
       if (a.priority !== b.priority) return a.priority - b.priority;
       return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
     });
+
+  memoryCache = rules;
+  memoryCacheExpiry = Date.now() + CACHE_TTL_MS;
   return rules;
 }
 
@@ -83,6 +102,7 @@ export async function createPromptInjection(data) {
      ON CONFLICT(scope, key) DO UPDATE SET value = excluded.value`,
     [SCOPE, id, stringifyJson(rule)]
   );
+  invalidatePromptInjectionCache();
   return rule;
 }
 
@@ -119,6 +139,7 @@ export async function updatePromptInjection(id, data) {
      ON CONFLICT(scope, key) DO UPDATE SET value = excluded.value`,
     [SCOPE, id, stringifyJson(updated)]
   );
+  invalidatePromptInjectionCache();
   return updated;
 }
 
@@ -126,6 +147,7 @@ export async function deletePromptInjection(id) {
   if (!id) return false;
   const db = await getAdapter();
   const res = db.run(`DELETE FROM kv WHERE scope = ? AND key = ?`, [SCOPE, id]);
+  invalidatePromptInjectionCache();
   return (res?.changes ?? 0) > 0;
 }
 
@@ -147,7 +169,39 @@ export async function reorderPromptInjections(orderedIds) {
       }
     });
   });
+  invalidatePromptInjectionCache();
   return true;
+}
+
+/**
+ * Record rule hits asynchronously without blocking chat flow
+ */
+export async function recordRuleHits(ruleIds) {
+  if (!Array.isArray(ruleIds) || ruleIds.length === 0) return;
+  try {
+    const db = await getAdapter();
+    const now = new Date().toISOString();
+    for (const id of ruleIds) {
+      const row = db.get(`SELECT value FROM kv WHERE scope = ? AND key = ?`, [SCOPE, id]);
+      if (row) {
+        const val = parseJson(row.value, {});
+        val.hitCount = (Number(val.hitCount) || 0) + 1;
+        val.lastTriggeredAt = now;
+        db.run(`UPDATE kv SET value = ? WHERE scope = ? AND key = ?`, [stringifyJson(val), SCOPE, id]);
+      }
+    }
+    // Mirror update into in-memory cache directly
+    if (memoryCache) {
+      for (const r of memoryCache) {
+        if (ruleIds.includes(r.id)) {
+          r.hitCount = (Number(r.hitCount) || 0) + 1;
+          r.lastTriggeredAt = now;
+        }
+      }
+    }
+  } catch {
+    // Non-blocking best effort
+  }
 }
 
 /**
@@ -187,23 +241,20 @@ export function extractUserText(body) {
 }
 
 /**
- * Match a target against pattern (exact or wildcard prefix/suffix)
+ * Match a target against pattern with full glob wildcard support (* matches any sequence)
  */
 function matchesPattern(target, pattern) {
   if (!target || !pattern) return false;
   const t = String(target).trim().toLowerCase();
   const p = String(pattern).trim().toLowerCase();
   if (p === "*" || p === t) return true;
-  if (p.endsWith("*") && p.startsWith("*")) {
-    return t.includes(p.slice(1, -1));
+  if (!p.includes("*")) return t === p;
+  try {
+    const escaped = p.replace(/[.+?^${}()|[\]\\]/g, "\\$&").split("*").join(".*");
+    return new RegExp(`^${escaped}$`, "i").test(t);
+  } catch {
+    return false;
   }
-  if (p.endsWith("*")) {
-    return t.startsWith(p.slice(0, -1));
-  }
-  if (p.startsWith("*")) {
-    return t.endsWith(p.slice(1));
-  }
-  return false;
 }
 
 /**
@@ -241,11 +292,22 @@ export async function isRuleMatching(rule, { modelStr = "", comboName = "", prov
       const targetString = isCase ? text : text.toLowerCase();
       const hasMatch = keywords.some((kw) => targetString.includes(isCase ? kw : kw.toLowerCase()));
       if (!hasMatch) return false;
+    } else if (rule.matchCondition.type === "not_contains") {
+      const keywords = pattern.split(",").map((k) => k.trim()).filter(Boolean);
+      if (keywords.length === 0) return true;
+      const isCase = !!rule.matchCondition.caseSensitive;
+      const targetString = isCase ? text : text.toLowerCase();
+      const hasMatch = keywords.some((kw) => targetString.includes(isCase ? kw : kw.toLowerCase()));
+      if (hasMatch) return false;
     } else if (rule.matchCondition.type === "regex") {
       try {
+        if (pattern.length > 250) return false;
+        // Guard against dangerous nested quantifiers
+        if (/(\([^\)]*[*+]\)[*+])|(\[[^\]]*[*+]\)[*+])/.test(pattern)) return false;
         const flags = rule.matchCondition.caseSensitive ? "" : "i";
+        const boundedText = typeof text === "string" ? text.slice(0, 32768) : "";
         const re = new RegExp(pattern, flags);
-        if (!re.test(text)) return false;
+        if (!re.test(boundedText)) return false;
       } catch {
         return false;
       }
@@ -290,16 +352,20 @@ export async function isRuleMatching(rule, { modelStr = "", comboName = "", prov
 /**
  * Substitute variables in prompt content
  */
-export function interpolateVariables(template, { modelStr = "", provider = "", model = "" } = {}) {
+export function interpolateVariables(template, { modelStr = "", provider = "", model = "", comboName = "", apiKey = "" } = {}) {
   if (typeof template !== "string") return "";
   const now = new Date();
   const dateStr = now.toISOString().slice(0, 10);
   const timeStr = now.toTimeString().slice(0, 8);
+  const weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const weekdayStr = weekdays[now.getDay()];
   const effectiveModel = modelStr || (provider && model ? `${provider}/${model}` : model || "");
 
   return template
     .replaceAll("{{model}}", effectiveModel)
     .replaceAll("{{provider}}", provider || "")
+    .replaceAll("{{comboName}}", comboName || "")
+    .replaceAll("{{weekday}}", weekdayStr)
     .replaceAll("{{date}}", dateStr)
     .replaceAll("{{time}}", timeStr)
     .replaceAll("{{datetime}}", now.toISOString());
@@ -313,18 +379,25 @@ export async function applyPromptInjectionsToBody(body, context = {}) {
   try {
     if (!body || typeof body !== "object") return { modified: false, injectedRules: [] };
 
-    const rules = await getPromptInjections();
+    // Fast in-memory cache for zero disk latency
+    const rules = await getPromptInjections(true);
     if (!rules || rules.length === 0) return { modified: false, injectedRules: [] };
 
-    // Array of applied rule IDs on this body to guarantee idempotency and JSON safety
-    if (!Array.isArray(body._appliedPromptInjections)) {
-      body._appliedPromptInjections = [];
+    // Non-enumerable tracker on body to guarantee zero leakage to upstream LLM APIs
+    if (!body._appliedPromptInjections) {
+      Object.defineProperty(body, "_appliedPromptInjections", {
+        value: [],
+        writable: true,
+        configurable: true,
+        enumerable: false, // Prevents serialization into JSON sent upstream
+      });
     }
 
     const userText = context.userText !== undefined ? context.userText : extractUserText(body);
     const enrichedContext = { ...context, userText };
 
     const appliedRuleNames = [];
+    const appliedRuleIds = [];
 
     for (const rule of rules) {
       if (body._appliedPromptInjections.includes(rule.id)) continue;
@@ -334,9 +407,14 @@ export async function applyPromptInjectionsToBody(body, context = {}) {
       const promptText = interpolateVariables(rule.content, enrichedContext).trim();
       if (!promptText) continue;
 
-      executeInjection(body, rule.position, promptText);
+      executeInjection(body, rule.position, promptText, enrichedContext);
       body._appliedPromptInjections.push(rule.id);
       appliedRuleNames.push(rule.name || rule.id);
+      appliedRuleIds.push(rule.id);
+    }
+
+    if (appliedRuleIds.length > 0) {
+      recordRuleHits(appliedRuleIds).catch(() => {});
     }
 
     return {
@@ -350,22 +428,34 @@ export async function applyPromptInjectionsToBody(body, context = {}) {
 }
 
 /**
- * Execute actual mutation on body based on position
+ * Execute actual mutation on body based on position with wire protocol awareness
  */
-export function executeInjection(body, position, promptText) {
+export function executeInjection(body, position, promptText, context = {}) {
   if (!body || !promptText) return;
 
   const pos = position || "system_prepend";
+  const isAnthropicFormat = typeof body.system !== "undefined" ||
+    context.provider === "anthropic" ||
+    context.provider === "claude" ||
+    (Array.isArray(body.messages) &&
+      body.messages.length > 0 &&
+      body.messages.every((m) => m && m.role !== "system" && m.role !== "developer") &&
+      ((context.modelStr && context.modelStr.toLowerCase().includes("claude")) ||
+       (context.model && context.model.toLowerCase().includes("claude"))));
 
   // 1. SYSTEM PREPEND
   if (pos === "system_prepend") {
-    // Claude / Anthropic format (takes precedence when body.system is defined)
+    // Claude / Anthropic format (takes precedence when body.system is defined or target is Anthropic)
     if (typeof body.system === "string") {
       body.system = `${promptText}\n\n${body.system}`;
       return;
     }
     if (Array.isArray(body.system)) {
       body.system.unshift({ type: "text", text: promptText });
+      return;
+    }
+    if (isAnthropicFormat) {
+      body.system = promptText;
       return;
     }
 
@@ -418,6 +508,10 @@ export function executeInjection(body, position, promptText) {
       body.system.push({ type: "text", text: promptText });
       return;
     }
+    if (isAnthropicFormat) {
+      body.system = promptText;
+      return;
+    }
 
     // OpenAI Responses
     if (typeof body.instructions === "string") {
@@ -460,7 +554,7 @@ export function executeInjection(body, position, promptText) {
   // 3. SYSTEM OVERRIDE
   if (pos === "system_override") {
     // Claude format
-    if (body.system !== undefined) {
+    if (body.system !== undefined || isAnthropicFormat) {
       body.system = promptText;
       return;
     }
