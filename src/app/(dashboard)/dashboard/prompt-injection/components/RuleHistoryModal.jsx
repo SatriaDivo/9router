@@ -95,7 +95,8 @@ export function RuleHistoryModal({
           ? `Revision History — ${targetRule.name}`
           : "Studio Activity & Revision History"
       }
-      size="lg"
+      size="full"
+      className="max-w-2xl"
     >
       <div className="flex flex-col gap-4 text-xs">
         {/* Filter bar */}

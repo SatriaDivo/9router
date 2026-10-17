@@ -250,7 +250,8 @@ export function RuleEditorModal({
         onClose={onClose}
         closeOnOverlay={false}
         title={rule ? (rule.id ? `Edit Rule: ${rule.name}` : `Create Rule from Template: ${rule.name}`) : "Create Prompt Injection Rule"}
-        size="lg"
+        size="full"
+        className="max-w-3xl"
       >
         <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4 text-xs">
           {formError && (
@@ -261,13 +262,13 @@ export function RuleEditorModal({
           )}
 
           {/* Navigation Tabs */}
-          <div className="flex items-center gap-1 border-b border-border/50 pb-2 overflow-x-auto scrollbar-none flex-nowrap">
+          <div className="flex items-center gap-1.5 border-b border-border/50 pb-2.5 overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             <button
               type="button"
               onClick={() => setActiveTab("scope")}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 shrink-0 ${
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-2 shrink-0 ${
                 activeTab === "scope"
-                  ? "bg-primary/10 text-primary border border-primary/20"
+                  ? "bg-primary text-white font-semibold shadow-xs"
                   : "text-text-muted hover:text-text hover:bg-surface-hover"
               }`}
             >
@@ -278,9 +279,9 @@ export function RuleEditorModal({
             <button
               type="button"
               onClick={() => setActiveTab("trigger")}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 shrink-0 ${
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-2 shrink-0 ${
                 activeTab === "trigger"
-                  ? "bg-primary/10 text-primary border border-primary/20"
+                  ? "bg-primary text-white font-semibold shadow-xs"
                   : "text-text-muted hover:text-text hover:bg-surface-hover"
               }`}
             >
@@ -291,9 +292,9 @@ export function RuleEditorModal({
             <button
               type="button"
               onClick={() => setActiveTab("prompt")}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 shrink-0 ${
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-2 shrink-0 ${
                 activeTab === "prompt"
-                  ? "bg-primary/10 text-primary border border-primary/20"
+                  ? "bg-primary text-white font-semibold shadow-xs"
                   : "text-text-muted hover:text-text hover:bg-surface-hover"
               }`}
             >
@@ -555,18 +556,18 @@ export function RuleEditorModal({
           {/* TAB 2: Triggers & Conditions */}
           <div className={activeTab === "trigger" ? "flex flex-col gap-3.5" : "hidden"}>
             {/* Condition Mode Selector */}
-            <div className="flex items-center justify-between p-2 rounded-xl bg-surface/50 border border-border/40">
-              <span className="font-semibold text-text text-xs flex items-center gap-1.5">
+            <div className="flex items-center justify-between p-2.5 rounded-xl bg-surface/50 border border-border/40 gap-3">
+              <span className="font-semibold text-text text-xs flex items-center gap-1.5 shrink-0">
                 <span className="material-symbols-outlined text-[16px] text-primary">rule</span>
                 Condition Builder Mode
               </span>
-              <div className="flex items-center gap-1 bg-surface rounded-lg p-0.5 border border-border/60">
+              <div className="flex items-center p-0.5 rounded-lg bg-surface border border-border/60">
                 <button
                   type="button"
                   onClick={() => setConditionMode("simple")}
-                  className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
+                  className={`px-3 py-1.5 rounded-md text-[11px] font-medium transition-all whitespace-nowrap ${
                     conditionMode === "simple"
-                      ? "bg-primary text-white"
+                      ? "bg-primary text-white shadow-xs font-semibold"
                       : "text-text-muted hover:text-text"
                   }`}
                 >
@@ -580,15 +581,21 @@ export function RuleEditorModal({
                       addConditionRow();
                     }
                   }}
-                  className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors flex items-center gap-1 ${
+                  className={`px-3 py-1.5 rounded-md text-[11px] font-medium transition-all flex items-center gap-1.5 whitespace-nowrap ${
                     conditionMode === "group"
-                      ? "bg-primary text-white"
+                      ? "bg-primary text-white shadow-xs font-semibold"
                       : "text-text-muted hover:text-text"
                   }`}
                 >
                   <span>Multi-Condition (AND/OR)</span>
-                  <span className="px-1 py-0.2 rounded bg-amber-500/20 text-amber-500 text-[9px] font-semibold uppercase">
-                    Pro
+                  <span
+                    className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                      conditionMode === "group"
+                        ? "bg-white/25 text-white"
+                        : "bg-primary/10 text-primary"
+                    }`}
+                  >
+                    PRO
                   </span>
                 </button>
               </div>
@@ -681,10 +688,10 @@ export function RuleEditorModal({
               /* Compound Multi-Condition Builder */
               <div className="flex flex-col gap-3 p-3.5 rounded-xl border border-primary/20 bg-surface/40">
                 {/* Logic Group Header: AND / OR */}
-                <div className="flex items-center justify-between pb-2 border-b border-border/40">
+                <div className="flex items-center justify-between pb-2.5 border-b border-border/40 gap-3 flex-wrap">
                   <div className="flex items-center gap-2">
-                    <span className="font-semibold text-text text-xs">Match Logic:</span>
-                    <div className="flex items-center gap-1">
+                    <span className="font-semibold text-text text-xs shrink-0">Match Logic:</span>
+                    <div className="flex items-center p-0.5 rounded-lg bg-surface border border-border/60">
                       <button
                         type="button"
                         onClick={() =>
@@ -693,10 +700,10 @@ export function RuleEditorModal({
                             matchCondition: { ...p.matchCondition, logic: "AND" },
                           }))
                         }
-                        className={`px-2.5 py-0.5 rounded text-xs font-semibold ${
+                        className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
                           (formData.matchCondition.logic || "AND") === "AND"
-                            ? "bg-primary text-white"
-                            : "bg-surface text-text-muted hover:text-text border border-border/50"
+                            ? "bg-primary text-white shadow-xs font-semibold"
+                            : "text-text-muted hover:text-text"
                         }`}
                       >
                         AND (All Must Match)
@@ -709,10 +716,10 @@ export function RuleEditorModal({
                             matchCondition: { ...p.matchCondition, logic: "OR" },
                           }))
                         }
-                        className={`px-2.5 py-0.5 rounded text-xs font-semibold ${
+                        className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
                           formData.matchCondition.logic === "OR"
-                            ? "bg-primary text-white"
-                            : "bg-surface text-text-muted hover:text-text border border-border/50"
+                            ? "bg-primary text-white shadow-xs font-semibold"
+                            : "text-text-muted hover:text-text"
                         }`}
                       >
                         OR (Any Match)
@@ -725,7 +732,7 @@ export function RuleEditorModal({
                     variant="secondary"
                     size="sm"
                     onClick={addConditionRow}
-                    className="h-7 text-[11px] gap-1 px-2.5"
+                    className="h-7 text-[11px] gap-1 px-3 shadow-xs shrink-0"
                   >
                     <span className="material-symbols-outlined text-[14px]">add</span>
                     Add Condition
@@ -737,67 +744,72 @@ export function RuleEditorModal({
                   {(formData.matchCondition.conditions || []).map((cond, idx) => (
                     <div
                       key={idx}
-                      className="flex flex-col md:flex-row items-start md:items-center gap-2 p-2.5 rounded-lg border border-border/60 bg-surface/70"
+                      className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-2.5 rounded-xl border border-border/60 bg-surface/70"
                     >
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-hover text-text-muted shrink-0 border border-border/40">
-                        IF #{idx + 1}
-                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[10px] font-mono px-2 py-1 rounded bg-surface-hover text-text-muted shrink-0 border border-border/40 font-semibold">
+                          IF #{idx + 1}
+                        </span>
 
-                      {/* Field Target Select */}
-                      <select
-                        value={cond.field || "user_text"}
-                        onChange={(e) => updateConditionRow(idx, { field: e.target.value })}
-                        className="bg-surface border border-border/60 text-xs rounded-lg px-2 py-1.5 text-text focus:outline-none focus:ring-1 focus:ring-primary shrink-0"
-                      >
-                        {CONDITION_FIELDS.map((f) => (
-                          <option key={f.value} value={f.value}>
-                            {f.label}
-                          </option>
-                        ))}
-                      </select>
+                        {/* Field Target Select */}
+                        <select
+                          value={cond.field || "user_text"}
+                          onChange={(e) => updateConditionRow(idx, { field: e.target.value })}
+                          className="bg-surface border border-border/60 text-xs rounded-lg px-2.5 py-1.5 text-text focus:outline-none focus:ring-1 focus:ring-primary shrink-0 w-36 cursor-pointer"
+                        >
+                          {CONDITION_FIELDS.map((f) => (
+                            <option key={f.value} value={f.value}>
+                              {f.label}
+                            </option>
+                          ))}
+                        </select>
 
-                      {/* Operator Select */}
-                      <select
-                        value={cond.operator || "contains"}
-                        onChange={(e) => updateConditionRow(idx, { operator: e.target.value })}
-                        className="bg-surface border border-border/60 text-xs rounded-lg px-2 py-1.5 text-text focus:outline-none focus:ring-1 focus:ring-primary shrink-0"
-                      >
-                        {CONDITION_OPERATORS.map((op) => (
-                          <option key={op.value} value={op.value}>
-                            {op.label}
-                          </option>
-                        ))}
-                      </select>
+                        {/* Operator Select */}
+                        <select
+                          value={cond.operator || "contains"}
+                          onChange={(e) => updateConditionRow(idx, { operator: e.target.value })}
+                          className="bg-surface border border-border/60 text-xs rounded-lg px-2.5 py-1.5 text-text focus:outline-none focus:ring-1 focus:ring-primary shrink-0 w-36 cursor-pointer"
+                        >
+                          {CONDITION_OPERATORS.map((op) => (
+                            <option key={op.value} value={op.value}>
+                              {op.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
                       {/* Value Input */}
-                      <Input
-                        placeholder="Keyword, regex, or value..."
-                        value={cond.value || cond.pattern || ""}
-                        onChange={(e) => updateConditionRow(idx, { value: e.target.value })}
-                        className="text-xs h-8 min-w-[140px] flex-1 font-mono"
-                      />
-
-                      {/* Case sensitive toggle */}
-                      <label className="flex items-center gap-1 text-[11px] text-text-muted hover:text-text cursor-pointer select-none shrink-0">
-                        <input
-                          type="checkbox"
-                          checked={!!cond.caseSensitive}
-                          onChange={(e) => updateConditionRow(idx, { caseSensitive: e.target.checked })}
-                          className="rounded border-border text-primary focus:ring-primary text-xs"
+                      <div className="flex-1 min-w-0">
+                        <Input
+                          placeholder="Keyword, regex, or value..."
+                          value={cond.value || cond.pattern || ""}
+                          onChange={(e) => updateConditionRow(idx, { value: e.target.value })}
+                          className="text-xs h-8 w-full font-mono"
                         />
-                        <span>Match case</span>
-                      </label>
+                      </div>
 
-                      {/* Delete button */}
-                      <button
-                        type="button"
-                        onClick={() => removeConditionRow(idx)}
-                        disabled={(formData.matchCondition.conditions || []).length <= 1}
-                        className="p-1 rounded text-text-muted hover:text-red-500 disabled:opacity-30 disabled:hover:text-text-muted transition-colors shrink-0"
-                        title="Remove condition"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">delete</span>
-                      </button>
+                      {/* Case sensitive toggle & Delete button */}
+                      <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0">
+                        <label className="flex items-center gap-1.5 text-[11px] text-text-muted hover:text-text cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={!!cond.caseSensitive}
+                            onChange={(e) => updateConditionRow(idx, { caseSensitive: e.target.checked })}
+                            className="rounded border-border text-primary focus:ring-primary text-xs"
+                          />
+                          <span className="whitespace-nowrap">Match case</span>
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={() => removeConditionRow(idx)}
+                          disabled={(formData.matchCondition.conditions || []).length <= 1}
+                          className="p-1.5 rounded-lg text-text-muted hover:text-red-500 hover:bg-red-500/10 disabled:opacity-30 disabled:hover:text-text-muted disabled:hover:bg-transparent transition-colors"
+                          title="Remove condition"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">delete</span>
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -870,7 +882,7 @@ export function RuleEditorModal({
             </div>
 
           {/* Modal Footer */}
-          <div className="flex items-center justify-between pt-3 border-t border-border/50 mt-2">
+          <div className="flex items-center justify-between pt-3.5 border-t border-border/50 mt-3">
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
             </Button>
@@ -882,25 +894,39 @@ export function RuleEditorModal({
                   onClick={() =>
                     setActiveTab(activeTab === "prompt" ? "trigger" : "scope")
                   }
+                  className="gap-1"
                 >
+                  <span className="material-symbols-outlined text-[16px]">arrow_back</span>
                   Back
                 </Button>
               )}
-              {activeTab !== "prompt" && (
+
+              {/* In edit mode, allow quick Save Changes from any tab */}
+              {rule?.id && activeTab !== "prompt" && (
+                <Button type="submit" variant="secondary" disabled={loading} className="gap-1.5 shadow-xs">
+                  <span className="material-symbols-outlined text-[16px]">save</span>
+                  Save Changes
+                </Button>
+              )}
+
+              {activeTab !== "prompt" ? (
                 <Button
                   type="button"
-                  variant="secondary"
+                  variant="primary"
                   onClick={() =>
                     setActiveTab(activeTab === "scope" ? "trigger" : "prompt")
                   }
+                  className="gap-1.5 shadow-xs"
                 >
-                  Next
+                  <span>Next Step</span>
+                  <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+                </Button>
+              ) : (
+                <Button type="submit" variant="primary" disabled={loading} className="gap-1.5 shadow-xs">
+                  <span className="material-symbols-outlined text-[16px]">check</span>
+                  {rule?.id ? "Save Changes" : "Create Rule"}
                 </Button>
               )}
-              <Button type="submit" variant="primary" disabled={loading} className="gap-1.5 shadow-sm">
-                <span className="material-symbols-outlined text-[16px]">check</span>
-                {rule ? "Save Changes" : "Create Rule"}
-              </Button>
             </div>
           </div>
         </form>
