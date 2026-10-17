@@ -1,3 +1,83 @@
+# v0.5.202 (2026-10-17) · 2 commits
+
+## What Was Fixed
+
+- **OpenCode Free & Zen executors**: Synchronized 100% with Decolua master upstream (open-sse executors, registry, fingerprint definitions, and test suites). Restored official upstream session aliases, headers, and test specifications.
+
+# v0.5.201 (2026-10-17) · 2 commits
+
+## What Was Fixed
+
+- **OpenCode Free & Zen executors**: Pruned redundant and unused tracking headers (`x-opencode-project`, `x-opencode-session-id`, `x-session-affinity`, `x-session-id`) across OpenCode free-tier requests to align strictly with upstream CLI behavior and prevent fingerprint mismatches.
+
+# v0.5.200 (2026-10-17) · 2 commits
+
+## What Was Fixed
+
+- **OpenCode Free & Zen executors**: Aligned `opencode.js` and `opencode-zen.js` with Decolua v2 CLI fingerprinting and PR #4860 routing. Free-tier models are routed to `/inference/v1`, obsolete `x-opencode-request` header is removed to eliminate 403 `FreeTierError`, bitmask session ID generation with pinned counters is synchronized, and verbatim `read`/`shell` schemas are enforced.
+
+# v0.5.199 (2026-10-17) · 2 commits
+
+## What Was Fixed
+
+- **OpenCode Free tier header alignment**: Updated OpenCode executors, registry, and catalog sync routes to default `x-opencode-client` to `cli`, enforce `x-opencode-project: global`, session affinity headers, and set `Accept: text/event-stream` across free-tier inference paths.
+
+# v0.5.198 (2026-10-17) · 2 commits
+
+## What's New
+
+- **All dashboard loading flows consolidated into the notification bell**: Every long-running operation in the dashboard is now wired to the central task store instead of living only as isolated or floating corner widgets:
+  - Provider batch tests ("Test All" for OAuth, Free tier, API key, and individual provider connections) now surface in the bell with live status, running indicator, and a 30s Completed row.
+  - Profile database and backup actions (export database, import database with progress tracking, saving auto-backup configuration, and test backups) now sync directly to the notification bell.
+  - Bulk import dialogs (Codex accounts, Grok CLI accounts, and multi-key API key imports) register with the bell task store so progress and completion are announced globally across the app.
+
+# v0.5.197 (2026-10-16) · 2 commits
+
+## What's New
+
+- **Model import shows in the notification bell**: "Importing models" was a
+  local dialog that lived only on the provider page, so closing the tab lost
+  the run and nothing else in the dashboard knew it existed. It now registers
+  as a long task like every other operation - visible in the bell while it
+  runs, with a Completed row when it ends.
+
+## What Was Fixed
+
+- **"Fetching model list" no longer hangs**: the model-list endpoint talked to
+  the provider with no timeout at all, so a stalled upstream left the dashboard
+  spinning for minutes with no error. Every outbound read now races a fixed
+  20-second budget, custom resolvers included, and a timeout answers plainly
+  instead of looking like a crash. The browser also stops waiting on its own
+  request after 20 seconds.
+
+
+# v0.5.196 (2026-10-16) · 2 commits
+
+## What Was Fixed
+
+- **Dismiss control on task rows**: the running-work rows in the bell ("Running
+  in background" / "Completed") had no remove button while notice rows did.
+  Every task row now carries its own X. A store-backed row retires through the
+  store so it stays gone; a row for a run whose page is closed is hidden for
+  that run only.
+
+
+# v0.5.195 (2026-10-16) · 2 commits
+
+## What's New
+
+- **Finished runs stay visible in the bell**: a completed long task keeps its
+  row for 30 seconds, marked `Completed` in green, before it retires itself -
+  so a finished import is announced instead of vanishing silently.
+- **A green dot on the bell**: while any operation is running, a small green
+  dot sits on the bell icon (top right), clear of the unread badge, so the
+  work in flight is known without opening the panel.
+- **Per-notice controls**: every notice row carries two buttons - mark as read
+  (check) and remove (trash). The existing "Mark all read" header action is
+  unchanged, and removing keeps the dedupe row so a condition that is still
+  true is announced again.
+
+
 # v0.5.194 (2026-10-16) · 2 commits
 
 ## What Was Fixed
