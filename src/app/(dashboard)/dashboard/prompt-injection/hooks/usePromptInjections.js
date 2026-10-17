@@ -218,6 +218,38 @@ export function usePromptInjections() {
     URL.revokeObjectURL(url);
   };
 
+  const fetchRevisions = async (ruleId = null) => {
+    try {
+      const url = ruleId
+        ? `/api/prompt-injection?action=history&ruleId=${encodeURIComponent(ruleId)}`
+        : `/api/prompt-injection?action=history`;
+      const res = await fetch(url);
+      const data = await res.json();
+      return data.revisions || [];
+    } catch {
+      return [];
+    }
+  };
+
+  const rollbackRevision = async (revisionId) => {
+    setActionLoading(true);
+    try {
+      const res = await fetch("/api/prompt-injection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "rollback", revisionId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Rollback failed");
+      await fetchRules();
+      return { success: true, rule: data.rule };
+    } catch (err) {
+      return { success: false, error: err.message };
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   return {
     rules,
     setRules,
@@ -237,5 +269,7 @@ export function usePromptInjections() {
     reorderRules,
     importRules,
     exportRules,
+    fetchRevisions,
+    rollbackRevision,
   };
 }

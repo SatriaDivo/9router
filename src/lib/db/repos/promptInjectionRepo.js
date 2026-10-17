@@ -3,6 +3,8 @@ import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 
 const SCOPE = "promptInjections";
+const REVISION_SCOPE = "promptInjectionRevisions";
+const MAX_REVISIONS = 50;
 
 // In-memory cache for ultra-low latency gateway request routing (0ms disk I/O)
 let memoryCache = null;
@@ -135,6 +137,13 @@ export async function createPromptInjection(data) {
     [SCOPE, id, stringifyJson(rule)]
   );
   invalidatePromptInjectionCache();
+  recordPromptInjectionRevision({
+    ruleId: id,
+    ruleName: rule.name,
+    action: "create",
+    snapshot: rule,
+    summary: `Created rule #${rule.priority} (${rule.position})`,
+  }).catch(() => {});
   return rule;
 }
 
@@ -193,14 +202,31 @@ export async function updatePromptInjection(id, data) {
     [SCOPE, id, stringifyJson(updated)]
   );
   invalidatePromptInjectionCache();
+  recordPromptInjectionRevision({
+    ruleId: id,
+    ruleName: updated.name,
+    action: "update",
+    snapshot: existing,
+    summary: `Updated: ${Object.keys(data).filter((k) => k !== "updatedAt").join(", ")}`,
+  }).catch(() => {});
   return updated;
 }
 
 export async function deletePromptInjection(id) {
   if (!id) return false;
   const db = await getAdapter();
+  const existing = await getPromptInjectionById(id);
   const res = db.run(`DELETE FROM kv WHERE scope = ? AND key = ?`, [SCOPE, id]);
   invalidatePromptInjectionCache();
+  if (existing) {
+    recordPromptInjectionRevision({
+      ruleId: id,
+      ruleName: existing.name,
+      action: "delete",
+      snapshot: existing,
+      summary: `Deleted rule "${existing.name}"`,
+    }).catch(() => {});
+  }
   return (res?.changes ?? 0) > 0;
 }
 
@@ -223,7 +249,114 @@ export async function reorderPromptInjections(orderedIds) {
     });
   });
   invalidatePromptInjectionCache();
+  recordPromptInjectionRevision({
+    ruleId: "reorder",
+    ruleName: "Studio Reordering",
+    action: "reorder",
+    snapshot: { orderedIds },
+    summary: `Reordered ${orderedIds.length} rule priorities`,
+  }).catch(() => {});
   return true;
+}
+
+/**
+ * Record a revision snapshot for audit trail and rollback
+ */
+export async function recordPromptInjectionRevision({
+  ruleId,
+  ruleName = "",
+  action = "update",
+  snapshot = null,
+  summary = "",
+} = {}) {
+  try {
+    const db = await getAdapter();
+    const id = `rev_${Date.now()}_${randomUUID().slice(0, 8)}`;
+    const now = new Date().toISOString();
+    const revision = {
+      id,
+      ruleId,
+      ruleName: ruleName || snapshot?.name || "Rule",
+      action,
+      summary,
+      snapshot,
+      at: now,
+    };
+    db.run(
+      `INSERT INTO kv(scope, key, value) VALUES(?, ?, ?)
+       ON CONFLICT(scope, key) DO UPDATE SET value = excluded.value`,
+      [REVISION_SCOPE, id, stringifyJson(revision)]
+    );
+    const countRow = db.get(`SELECT COUNT(*) as cnt FROM kv WHERE scope = ?`, [REVISION_SCOPE]);
+    if ((countRow?.cnt || 0) > MAX_REVISIONS) {
+      db.run(
+        `DELETE FROM kv WHERE scope = ? AND key NOT IN (
+           SELECT key FROM kv WHERE scope = ? ORDER BY key DESC LIMIT ?
+         )`,
+        [REVISION_SCOPE, REVISION_SCOPE, MAX_REVISIONS]
+      );
+    }
+    return revision;
+  } catch (err) {
+    return null;
+  }
+}
+
+/**
+ * List recent revisions, optionally filtered by ruleId
+ */
+export async function listPromptInjectionRevisions({ ruleId = null, limit = 30 } = {}) {
+  try {
+    const db = await getAdapter();
+    const rows = db.all(`SELECT key, value FROM kv WHERE scope = ? ORDER BY key DESC`, [REVISION_SCOPE]);
+    let revisions = rows
+      .map((r) => parseJson(r.value, null))
+      .filter(Boolean);
+
+    if (ruleId) {
+      revisions = revisions.filter((rev) => rev.ruleId === ruleId);
+    }
+    return revisions.slice(0, Math.min(limit, MAX_REVISIONS));
+  } catch (err) {
+    return [];
+  }
+}
+
+/**
+ * Roll back a rule to a past revision snapshot
+ */
+export async function rollbackPromptInjectionRevision(revisionId) {
+  if (!revisionId) throw new Error("Revision ID is required");
+  const db = await getAdapter();
+  const row = db.get(`SELECT value FROM kv WHERE scope = ? AND key = ?`, [REVISION_SCOPE, revisionId]);
+  if (!row) throw new Error("Revision snapshot not found");
+
+  const rev = parseJson(row.value, null);
+  if (!rev || !rev.snapshot || !rev.snapshot.id) throw new Error("Invalid revision snapshot data");
+
+  const targetId = rev.snapshot.id;
+  const now = new Date().toISOString();
+  const restored = {
+    ...rev.snapshot,
+    updatedAt: now,
+  };
+
+  db.run(
+    `INSERT INTO kv(scope, key, value) VALUES(?, ?, ?)
+     ON CONFLICT(scope, key) DO UPDATE SET value = excluded.value`,
+    [SCOPE, targetId, stringifyJson(restored)]
+  );
+  invalidatePromptInjectionCache();
+
+  await recordPromptInjectionRevision({
+    ruleId: targetId,
+    ruleName: restored.name,
+    action: "rollback",
+    snapshot: restored,
+    summary: `Restored to revision from ${new Date(rev.at).toLocaleDateString()} ${new Date(rev.at).toLocaleTimeString()}`,
+  });
+
+  return restored;
 }
 
 /**

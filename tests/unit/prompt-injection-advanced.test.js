@@ -15,6 +15,8 @@ import {
   applyPromptInjectionsToBody,
   invalidatePromptInjectionCache,
   evaluateConditionNode,
+  listPromptInjectionRevisions,
+  rollbackPromptInjectionRevision,
 } from "../../src/lib/db/repos/promptInjectionRepo.js";
 import { GET, POST, PUT, DELETE } from "../../src/app/api/prompt-injection/route.js";
 
@@ -728,6 +730,64 @@ describe("Security, ReDoS Guard, and Advanced Protocol Hardening", () => {
       expect(simTrace).toBeDefined();
       expect(simTrace.matched).toBe(true);
       expect(simTrace.reason).toContain("Global");
+    } finally {
+      await deletePromptInjection(r.id);
+    }
+  });
+
+  it("records rule revisions on mutations and successfully rolls back", async () => {
+    // 1. Create a rule
+    const r = await createPromptInjection({
+      name: "Versioned Initial Rule",
+      targetType: "all",
+      content: "ORIGINAL_PROMPT_VERSION_1",
+      priority: 10,
+    });
+
+    try {
+      // Check create revision recorded
+      const revsAfterCreate = await listPromptInjectionRevisions({ ruleId: r.id });
+      expect(revsAfterCreate.length).toBeGreaterThanOrEqual(1);
+      const createRev = revsAfterCreate.find((rev) => rev.action === "create");
+      expect(createRev).toBeDefined();
+      expect(createRev.snapshot.content).toBe("ORIGINAL_PROMPT_VERSION_1");
+
+      // 2. Update the rule
+      await updatePromptInjection(r.id, {
+        name: "Versioned Updated Rule",
+        content: "MODIFIED_PROMPT_VERSION_2",
+      });
+
+      const revsAfterUpdate = await listPromptInjectionRevisions({ ruleId: r.id });
+      const updateRev = revsAfterUpdate.find((rev) => rev.action === "update");
+      expect(updateRev).toBeDefined();
+      expect(updateRev.snapshot.content).toBe("ORIGINAL_PROMPT_VERSION_1");
+
+      // 3. Roll back to version 1 using updateRev.id
+      const restored = await rollbackPromptInjectionRevision(updateRev.id);
+      expect(restored.content).toBe("ORIGINAL_PROMPT_VERSION_1");
+
+      const fetchedAfterRollback = await getPromptInjectionById(r.id);
+      expect(fetchedAfterRollback.content).toBe("ORIGINAL_PROMPT_VERSION_1");
+
+      // 4. Test rollback via POST API route
+      const reqRollback = new Request("http://localhost/api/prompt-injection", {
+        method: "POST",
+        body: JSON.stringify({ action: "rollback", revisionId: updateRev.id }),
+      });
+      const resRollback = await POST(reqRollback);
+      expect(resRollback.status).toBe(200);
+      const data = await resRollback.json();
+      expect(data.success).toBe(true);
+      expect(data.rule.content).toBe("ORIGINAL_PROMPT_VERSION_1");
+
+      // 5. Test history via GET API route
+      const reqHistory = new Request("http://localhost/api/prompt-injection?action=history&ruleId=" + r.id);
+      const resHistory = await GET(reqHistory);
+      expect(resHistory.status).toBe(200);
+      const histData = await resHistory.json();
+      expect(Array.isArray(histData.revisions)).toBe(true);
+      expect(histData.revisions.length).toBeGreaterThanOrEqual(2);
     } finally {
       await deletePromptInjection(r.id);
     }

@@ -26,6 +26,7 @@ export function PromptRuleList({
   onDuplicate,
   onDelete,
   onTestRule,
+  onHistory,
   onNewRule,
   onOpenTemplates,
   onReorder,
@@ -115,6 +116,7 @@ export function PromptRuleList({
                 onDuplicate={onDuplicate}
                 onDelete={onDelete}
                 onTestRule={onTestRule}
+                onHistory={onHistory}
                 isSortable={true}
               />
             ))}
@@ -136,6 +138,7 @@ export function PromptRuleList({
           onDuplicate={onDuplicate}
           onDelete={onDelete}
           onTestRule={onTestRule}
+          onHistory={onHistory}
           isSortable={false}
         />
       ))}

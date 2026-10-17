@@ -14,6 +14,7 @@ export function PromptRuleCard({
   onDuplicate,
   onDelete,
   onTestRule,
+  onHistory,
   isSortable = false,
 }) {
   const { copied, copy } = useCopyToClipboard();
@@ -187,6 +188,14 @@ export function PromptRuleCard({
               title="Duplicate rule"
             >
               <span className="material-symbols-outlined text-[16px]">content_copy</span>
+            </button>
+
+            <button
+              onClick={() => onHistory?.(rule)}
+              className="p-1.5 hover:bg-surface-hover rounded-md text-text-muted hover:text-text transition-colors"
+              title="View revision history & rollback"
+            >
+              <span className="material-symbols-outlined text-[16px]">history</span>
             </button>
 
             <button

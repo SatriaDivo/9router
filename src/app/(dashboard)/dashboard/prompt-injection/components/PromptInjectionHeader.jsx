@@ -6,6 +6,7 @@ export function PromptInjectionHeader({
   onNewRule,
   onOpenPlayground,
   onOpenTemplates,
+  onOpenHistory,
   onImport,
   onExport,
   onRefresh,
@@ -64,6 +65,17 @@ export function PromptInjectionHeader({
         >
           <span className="material-symbols-outlined text-[18px]">download</span>
           <span className="hidden md:inline">Export</span>
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onOpenHistory}
+          className="gap-1.5 text-text-muted hover:text-text"
+          title="View Studio Revision History & Audit Trail"
+        >
+          <span className="material-symbols-outlined text-[18px]">history</span>
+          <span className="hidden md:inline">History</span>
         </Button>
 
         <Button

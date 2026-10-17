@@ -6,6 +6,8 @@ import {
   updatePromptInjection,
   deletePromptInjection,
   reorderPromptInjections,
+  listPromptInjectionRevisions,
+  rollbackPromptInjectionRevision,
   applyPromptInjectionsToBody,
   isRuleMatching,
   interpolateVariables,
@@ -13,9 +15,24 @@ import {
   extractUserText,
 } from "../../../lib/db/repos/promptInjectionRepo.js";
 
-// GET /api/prompt-injection - list all rules
-export async function GET() {
+// GET /api/prompt-injection - list all rules or revisions history
+export async function GET(request) {
   try {
+    let action = null;
+    let ruleId = null;
+    let limit = 30;
+    if (request?.url) {
+      const { searchParams } = new URL(request.url);
+      action = searchParams.get("action");
+      ruleId = searchParams.get("ruleId") || null;
+      limit = parseInt(searchParams.get("limit") || "30", 10);
+    }
+
+    if (action === "revisions" || action === "history") {
+      const revisions = await listPromptInjectionRevisions({ ruleId, limit });
+      return NextResponse.json({ revisions });
+    }
+
     const rules = await getPromptInjections();
     return NextResponse.json({ rules });
   } catch (error) {
@@ -24,10 +41,20 @@ export async function GET() {
   }
 }
 
-// POST /api/prompt-injection - create rule or test dry-run
+// POST /api/prompt-injection - create rule, test dry-run, or rollback
 export async function POST(request) {
   try {
     const body = await request.json();
+
+    // Rollback to a past revision snapshot
+    if (body.action === "rollback") {
+      const { revisionId } = body;
+      if (!revisionId) {
+        return NextResponse.json({ error: "Revision ID is required for rollback" }, { status: 400 });
+      }
+      const restoredRule = await rollbackPromptInjectionRevision(revisionId);
+      return NextResponse.json({ success: true, rule: restoredRule });
+    }
 
     // Full gateway pipeline simulation
     if (body.simulate || body.action === "simulate") {

@@ -11,6 +11,7 @@ import { RuleEditorModal } from "./components/RuleEditorModal";
 import { PlaygroundModal } from "./components/PlaygroundModal";
 import { TemplateLibraryModal } from "./components/TemplateLibraryModal";
 import { PromptImportModal } from "./components/PromptImportModal";
+import { RuleHistoryModal } from "./components/RuleHistoryModal";
 
 export default function PromptInjectionPage() {
   const {
@@ -30,6 +31,8 @@ export default function PromptInjectionPage() {
     reorderRules,
     importRules,
     exportRules,
+    fetchRevisions,
+    rollbackRevision,
   } = usePromptInjections();
 
   // Filter & Search states
@@ -45,6 +48,8 @@ export default function PromptInjectionPage() {
   const [playgroundTargetRule, setPlaygroundTargetRule] = useState(null);
   const [templateLibraryOpen, setTemplateLibraryOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyTargetRule, setHistoryTargetRule] = useState(null);
   const [deletingRule, setDeletingRule] = useState(null);
 
   // Client-side filtering
@@ -120,6 +125,11 @@ export default function PromptInjectionPage() {
     setPlaygroundOpen(true);
   };
 
+  const handleOpenHistory = (rule = null) => {
+    setHistoryTargetRule(rule);
+    setHistoryOpen(true);
+  };
+
   const handleDeleteConfirm = async () => {
     if (!deletingRule) return;
     await deleteRule(deletingRule.id);
@@ -144,6 +154,7 @@ export default function PromptInjectionPage() {
             setPlaygroundOpen(true);
           }}
           onOpenTemplates={() => setTemplateLibraryOpen(true)}
+          onOpenHistory={() => handleOpenHistory(null)}
           onImport={() => setImportOpen(true)}
           onExport={exportRules}
           onRefresh={fetchRules}
@@ -174,6 +185,7 @@ export default function PromptInjectionPage() {
           onDuplicate={duplicateRule}
           onDelete={(r) => setDeletingRule(r)}
           onTestRule={handleTestRule}
+          onHistory={handleOpenHistory}
           onNewRule={handleOpenNewRule}
           onOpenTemplates={() => setTemplateLibraryOpen(true)}
           onReorder={handleReorderRules}
@@ -211,6 +223,15 @@ export default function PromptInjectionPage() {
         isOpen={templateLibraryOpen}
         onClose={() => setTemplateLibraryOpen(false)}
         onApplyTemplate={handleApplyTemplate}
+      />
+
+      <RuleHistoryModal
+        isOpen={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        targetRule={historyTargetRule}
+        onRollback={rollbackRevision}
+        fetchRevisions={fetchRevisions}
+        loading={actionLoading}
       />
 
       <ConfirmModal
