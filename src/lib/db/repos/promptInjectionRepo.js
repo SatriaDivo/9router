@@ -258,58 +258,69 @@ function matchesPattern(target, pattern) {
 }
 
 /**
- * Evaluate if a rule matches the current request context (async to check API keys if needed)
+ * Detailed evaluation of whether a rule matches request context, returning reason for debugging
  */
-export async function isRuleMatching(rule, { modelStr = "", comboName = "", provider = "", model = "", apiKey = "", userText = "" } = {}) {
-  if (!rule || !rule.enabled) return false;
-  if (!rule.content || !rule.content.trim()) return false;
+export async function evaluateRuleMatch(
+  rule,
+  { modelStr = "", comboName = "", provider = "", model = "", apiKey = "", userText = "" } = {}
+) {
+  if (!rule) return { matches: false, reason: "Rule is undefined" };
+  if (!rule.enabled) return { matches: false, reason: "Rule is disabled" };
+  if (!rule.content || !rule.content.trim()) return { matches: false, reason: "Rule prompt content is empty" };
 
   // 1. Target API Keys restriction check
   if (Array.isArray(rule.targetKeys) && rule.targetKeys.length > 0) {
-    if (!apiKey) return false;
+    if (!apiKey) return { matches: false, reason: "Request has no API key, but rule restricts to specific keys" };
     let matchesKey = rule.targetKeys.includes(apiKey);
     if (!matchesKey) {
       try {
         const { getApiKeyByKey } = await import("./apiKeysRepo.js");
         const keyObj = await getApiKeyByKey(apiKey);
-        if (keyObj && (rule.targetKeys.includes(keyObj.id) || rule.targetKeys.includes(keyObj.name) || rule.targetKeys.includes(keyObj.key))) {
+        if (
+          keyObj &&
+          (rule.targetKeys.includes(keyObj.id) ||
+            rule.targetKeys.includes(keyObj.name) ||
+            rule.targetKeys.includes(keyObj.key))
+        ) {
           matchesKey = true;
         }
       } catch {}
     }
-    if (!matchesKey) return false;
+    if (!matchesKey) return { matches: false, reason: "API key does not match target keys" };
   }
 
   // 2. Keyword / Regex trigger condition check
   if (rule.matchCondition && rule.matchCondition.type && rule.matchCondition.type !== "always") {
     const text = userText || "";
     const pattern = (rule.matchCondition.pattern || "").trim();
-    if (!pattern) return false;
+    if (!pattern) return { matches: false, reason: "Trigger condition pattern is empty" };
 
     if (rule.matchCondition.type === "contains") {
       const keywords = pattern.split(",").map((k) => k.trim()).filter(Boolean);
       const isCase = !!rule.matchCondition.caseSensitive;
       const targetString = isCase ? text : text.toLowerCase();
       const hasMatch = keywords.some((kw) => targetString.includes(isCase ? kw : kw.toLowerCase()));
-      if (!hasMatch) return false;
+      if (!hasMatch) return { matches: false, reason: `User prompt does not contain keyword: "${pattern}"` };
     } else if (rule.matchCondition.type === "not_contains") {
       const keywords = pattern.split(",").map((k) => k.trim()).filter(Boolean);
-      if (keywords.length === 0) return true;
-      const isCase = !!rule.matchCondition.caseSensitive;
-      const targetString = isCase ? text : text.toLowerCase();
-      const hasMatch = keywords.some((kw) => targetString.includes(isCase ? kw : kw.toLowerCase()));
-      if (hasMatch) return false;
+      if (keywords.length > 0) {
+        const isCase = !!rule.matchCondition.caseSensitive;
+        const targetString = isCase ? text : text.toLowerCase();
+        const hasMatch = keywords.some((kw) => targetString.includes(isCase ? kw : kw.toLowerCase()));
+        if (hasMatch) return { matches: false, reason: `User prompt matched negative keyword: "${pattern}"` };
+      }
     } else if (rule.matchCondition.type === "regex") {
       try {
-        if (pattern.length > 250) return false;
-        // Guard against dangerous nested quantifiers
-        if (/(\([^\)]*[*+]\)[*+])|(\[[^\]]*[*+]\)[*+])/.test(pattern)) return false;
+        if (pattern.length > 250) return { matches: false, reason: "Regex pattern exceeds 250 character limit" };
+        if (/(\([^\)]*[*+]\)[*+])|(\[[^\]]*[*+]\)[*+])/.test(pattern)) {
+          return { matches: false, reason: "Potentially catastrophic regex pattern rejected" };
+        }
         const flags = rule.matchCondition.caseSensitive ? "" : "i";
         const boundedText = typeof text === "string" ? text.slice(0, 32768) : "";
         const re = new RegExp(pattern, flags);
-        if (!re.test(boundedText)) return false;
-      } catch {
-        return false;
+        if (!re.test(boundedText)) return { matches: false, reason: `Regex /${pattern}/ did not match user text` };
+      } catch (err) {
+        return { matches: false, reason: `Regex error: ${err.message}` };
       }
     }
   }
@@ -318,7 +329,7 @@ export async function isRuleMatching(rule, { modelStr = "", comboName = "", prov
   const targetType = rule.targetType || "models";
 
   if (targetType === "all") {
-    return true;
+    return { matches: true, reason: "Target scope: Global (All models)" };
   }
 
   const matchesCombo = () => {
@@ -335,18 +346,42 @@ export async function isRuleMatching(rule, { modelStr = "", comboName = "", prov
   };
 
   if (targetType === "combos") {
-    return matchesCombo();
+    const isComboMatch = matchesCombo();
+    return {
+      matches: isComboMatch,
+      reason: isComboMatch
+        ? `Target combo matched: ${comboName || modelStr}`
+        : `Target combos [${(rule.targetCombos || []).join(", ")}] did not match "${comboName || modelStr}"`,
+    };
   }
 
   if (targetType === "models") {
-    return matchesModel();
+    const isModelMatch = matchesModel();
+    return {
+      matches: isModelMatch,
+      reason: isModelMatch
+        ? `Target model matched: ${modelStr || model}`
+        : `Target models [${(rule.targetModels || []).join(", ")}] did not match "${modelStr || model}"`,
+    };
   }
 
   if (targetType === "custom") {
-    return matchesCombo() || matchesModel();
+    const isCustomMatch = matchesCombo() || matchesModel();
+    return {
+      matches: isCustomMatch,
+      reason: isCustomMatch ? "Target custom scope matched" : "Custom scope did not match target model/combo",
+    };
   }
 
-  return false;
+  return { matches: false, reason: "Unknown targetType" };
+}
+
+/**
+ * Evaluate if a rule matches the current request context (async to check API keys if needed)
+ */
+export async function isRuleMatching(rule, context = {}) {
+  const res = await evaluateRuleMatch(rule, context);
+  return res.matches;
 }
 
 /**
@@ -373,15 +408,19 @@ export function interpolateVariables(template, { modelStr = "", provider = "", m
 
 /**
  * Apply prompt injection rules to a request body.
- * Mutates body in place and returns applied rule info.
+ * Mutates body in place and returns applied rule info and trace.
  */
-export async function applyPromptInjectionsToBody(body, context = {}) {
+export async function applyPromptInjectionsToBody(body, context = {}, options = {}) {
   try {
-    if (!body || typeof body !== "object") return { modified: false, injectedRules: [] };
+    if (!body || typeof body !== "object") {
+      return { modified: false, injectedRules: [], appliedRules: [], skippedRules: [], trace: [] };
+    }
 
     // Fast in-memory cache for zero disk latency
     const rules = await getPromptInjections(true);
-    if (!rules || rules.length === 0) return { modified: false, injectedRules: [] };
+    if (!rules || rules.length === 0) {
+      return { modified: false, injectedRules: [], appliedRules: [], skippedRules: [], trace: [] };
+    }
 
     // Non-enumerable tracker on body to guarantee zero leakage to upstream LLM APIs
     if (!body._appliedPromptInjections) {
@@ -398,32 +437,85 @@ export async function applyPromptInjectionsToBody(body, context = {}) {
 
     const appliedRuleNames = [];
     const appliedRuleIds = [];
+    const appliedRules = [];
+    const skippedRules = [];
+    const trace = [];
 
     for (const rule of rules) {
-      if (body._appliedPromptInjections.includes(rule.id)) continue;
-      const matches = await isRuleMatching(rule, enrichedContext);
-      if (!matches) continue;
+      if (body._appliedPromptInjections.includes(rule.id)) {
+        skippedRules.push({ id: rule.id, name: rule.name, reason: "Already applied to this request" });
+        trace.push({
+          id: rule.id,
+          name: rule.name,
+          priority: rule.priority,
+          matched: false,
+          reason: "Already applied to this request (Idempotent)",
+        });
+        continue;
+      }
+
+      const evalRes = await evaluateRuleMatch(rule, enrichedContext);
+      if (!evalRes.matches) {
+        skippedRules.push({ id: rule.id, name: rule.name, reason: evalRes.reason });
+        trace.push({
+          id: rule.id,
+          name: rule.name,
+          priority: rule.priority,
+          matched: false,
+          reason: evalRes.reason,
+        });
+        continue;
+      }
 
       const promptText = interpolateVariables(rule.content, enrichedContext).trim();
-      if (!promptText) continue;
+      if (!promptText) {
+        skippedRules.push({ id: rule.id, name: rule.name, reason: "Interpolated prompt text is empty" });
+        trace.push({
+          id: rule.id,
+          name: rule.name,
+          priority: rule.priority,
+          matched: false,
+          reason: "Interpolated prompt text is empty",
+        });
+        continue;
+      }
 
       executeInjection(body, rule.position, promptText, enrichedContext);
       body._appliedPromptInjections.push(rule.id);
       appliedRuleNames.push(rule.name || rule.id);
       appliedRuleIds.push(rule.id);
+      appliedRules.push({
+        id: rule.id,
+        name: rule.name,
+        position: rule.position,
+        priority: rule.priority,
+        injectedPrompt: promptText,
+      });
+      trace.push({
+        id: rule.id,
+        name: rule.name,
+        priority: rule.priority,
+        matched: true,
+        position: rule.position,
+        reason: evalRes.reason,
+        injectedPrompt: promptText,
+      });
     }
 
-    if (appliedRuleIds.length > 0) {
+    if (appliedRuleIds.length > 0 && !options.skipHitTracking) {
       recordRuleHits(appliedRuleIds).catch(() => {});
     }
 
     return {
       modified: appliedRuleNames.length > 0,
       injectedRules: appliedRuleNames,
+      appliedRules,
+      skippedRules,
+      trace,
     };
   } catch (err) {
     // Fail-open: never break chat requests
-    return { modified: false, injectedRules: [] };
+    return { modified: false, injectedRules: [], appliedRules: [], skippedRules: [], trace: [] };
   }
 }
 

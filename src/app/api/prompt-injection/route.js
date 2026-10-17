@@ -34,6 +34,7 @@ export async function POST(request) {
       const sampleBody = JSON.parse(JSON.stringify(body.body || {
         messages: [{ role: "user", content: "Hello world" }]
       }));
+      const originalBody = JSON.parse(JSON.stringify(sampleBody));
       const context = {
         modelStr: body.model || "openai/gpt-4o",
         comboName: body.comboName || "",
@@ -42,10 +43,14 @@ export async function POST(request) {
         model: (body.model || "").includes("/") ? body.model.split("/")[1] : body.model || "gpt-4o",
       };
 
-      const injectionRes = await applyPromptInjectionsToBody(sampleBody, context);
+      const injectionRes = await applyPromptInjectionsToBody(sampleBody, context, { skipHitTracking: true });
       return NextResponse.json({
         modified: injectionRes.modified,
         injectedRules: injectionRes.injectedRules,
+        appliedRules: injectionRes.appliedRules || [],
+        skippedRules: injectionRes.skippedRules || [],
+        trace: injectionRes.trace || [],
+        originalBody,
         body: sampleBody,
       });
     }

@@ -329,8 +329,13 @@ describe("Prompt Injection Studio - applyPromptInjectionsToBody Pipeline Integra
   });
 
   it("fails open gracefully on malformed inputs without throwing", async () => {
-    expect(await applyPromptInjectionsToBody(null)).toEqual({ modified: false, injectedRules: [] });
-    expect(await applyPromptInjectionsToBody("invalid string")).toEqual({ modified: false, injectedRules: [] });
+    const resNull = await applyPromptInjectionsToBody(null);
+    expect(resNull.modified).toBe(false);
+    expect(resNull.injectedRules).toEqual([]);
+
+    const resString = await applyPromptInjectionsToBody("invalid string");
+    expect(resString.modified).toBe(false);
+    expect(resString.injectedRules).toEqual([]);
   });
 });
 
@@ -586,7 +591,7 @@ describe("Security, ReDoS Guard, and Advanced Protocol Hardening", () => {
     }
   });
 
-  it("evaluates gateway simulation via POST with simulate: true", async () => {
+  it("evaluates gateway simulation via POST with simulate: true and returns diagnostics trace", async () => {
     const r = await createPromptInjection({
       name: "Sim Test Rule",
       targetType: "all",
@@ -610,7 +615,15 @@ describe("Security, ReDoS Guard, and Advanced Protocol Hardening", () => {
       const data = await resSim.json();
       expect(data.modified).toBe(true);
       expect(data.injectedRules).toContain("Sim Test Rule");
+      expect(data.appliedRules.length).toBeGreaterThanOrEqual(1);
+      expect(data.trace.length).toBeGreaterThanOrEqual(1);
+      expect(data.originalBody).toBeDefined();
       expect(data.body.messages.some((m) => m.content.includes("SIM_INJECTED_SYSTEM"))).toBe(true);
+
+      const simTrace = data.trace.find((t) => t.id === r.id);
+      expect(simTrace).toBeDefined();
+      expect(simTrace.matched).toBe(true);
+      expect(simTrace.reason).toContain("Global");
     } finally {
       await deletePromptInjection(r.id);
     }

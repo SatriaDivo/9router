@@ -7,6 +7,7 @@ import {
   VARIABLE_CHIPS,
   POPULAR_MODELS,
 } from "../../src/app/(dashboard)/dashboard/prompt-injection/constants/promptConstants.js";
+import { BUILTIN_TEST_CASES } from "../../src/app/(dashboard)/dashboard/prompt-injection/hooks/usePlaygroundSimulator.js";
 
 describe("Prompt Injection UI Constants & Templates Contract", () => {
   it("validates all preset templates have required properties", () => {
@@ -85,5 +86,16 @@ describe("Prompt Injection UI Constants & Templates Contract", () => {
     expect(POPULAR_MODELS.some((m) => m.includes("claude"))).toBe(true);
     expect(POPULAR_MODELS.some((m) => m.includes("deepseek"))).toBe(true);
     expect(POPULAR_MODELS.some((m) => m.includes("gemini"))).toBe(true);
+  });
+
+  it("validates playground built-in test cases have models and prompts", () => {
+    expect(BUILTIN_TEST_CASES.length).toBeGreaterThanOrEqual(4);
+    for (const tc of BUILTIN_TEST_CASES) {
+      expect(typeof tc.id).toBe("string");
+      expect(typeof tc.name).toBe("string");
+      expect(typeof tc.model).toBe("string");
+      expect(typeof tc.userPrompt).toBe("string");
+      expect(tc.userPrompt.length).toBeGreaterThan(0);
+    }
   });
 });
