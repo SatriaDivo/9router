@@ -28,12 +28,28 @@ function rowToRule(row) {
     targetModels: Array.isArray(val.targetModels) ? val.targetModels : [],
     // Target API keys (empty = all keys or unauthenticated)
     targetKeys: Array.isArray(val.targetKeys) ? val.targetKeys : [],
-    // Prompt keyword / regex match condition
-    matchCondition: {
-      type: val.matchCondition?.type || "always", // "always" | "contains" | "not_contains" | "regex"
-      pattern: typeof val.matchCondition?.pattern === "string" ? val.matchCondition.pattern : "",
-      caseSensitive: !!val.matchCondition?.caseSensitive,
-    },
+    // Prompt keyword / regex / compound match condition
+    matchCondition:
+      Array.isArray(val.matchCondition?.conditions) && val.matchCondition.conditions.length > 0
+        ? {
+            logic: (val.matchCondition.logic || "AND").toUpperCase(),
+            conditions: val.matchCondition.conditions.map((c) => ({
+              field: c.field || "user_text",
+              operator: c.operator || c.type || "contains",
+              value:
+                typeof c.value === "string"
+                  ? c.value
+                  : typeof c.pattern === "string"
+                  ? c.pattern
+                  : "",
+              caseSensitive: !!c.caseSensitive,
+            })),
+          }
+        : {
+            type: val.matchCondition?.type || "always",
+            pattern: typeof val.matchCondition?.pattern === "string" ? val.matchCondition.pattern : "",
+            caseSensitive: !!val.matchCondition?.caseSensitive,
+          },
     // "system_prepend" | "system_append" | "system_override" | "user_prepend" | "user_append"
     position: val.position || "system_prepend",
     content: typeof val.content === "string" ? val.content : "",
@@ -85,11 +101,27 @@ export async function createPromptInjection(data) {
     targetCombos: Array.isArray(data.targetCombos) ? data.targetCombos.map((s) => String(s).trim()).filter(Boolean) : [],
     targetModels: Array.isArray(data.targetModels) ? data.targetModels.map((s) => String(s).trim()).filter(Boolean) : [],
     targetKeys: Array.isArray(data.targetKeys) ? data.targetKeys.map((s) => String(s).trim()).filter(Boolean) : [],
-    matchCondition: {
-      type: data.matchCondition?.type || "always",
-      pattern: typeof data.matchCondition?.pattern === "string" ? data.matchCondition.pattern.trim() : "",
-      caseSensitive: !!data.matchCondition?.caseSensitive,
-    },
+    matchCondition:
+      Array.isArray(data.matchCondition?.conditions) && data.matchCondition.conditions.length > 0
+        ? {
+            logic: (data.matchCondition.logic || "AND").toUpperCase(),
+            conditions: data.matchCondition.conditions.map((c) => ({
+              field: c.field || "user_text",
+              operator: c.operator || c.type || "contains",
+              value:
+                typeof c.value === "string"
+                  ? c.value.trim()
+                  : typeof c.pattern === "string"
+                  ? c.pattern.trim()
+                  : "",
+              caseSensitive: !!c.caseSensitive,
+            })),
+          }
+        : {
+            type: data.matchCondition?.type || "always",
+            pattern: typeof data.matchCondition?.pattern === "string" ? data.matchCondition.pattern.trim() : "",
+            caseSensitive: !!data.matchCondition?.caseSensitive,
+          },
     position: data.position || "system_prepend",
     content: typeof data.content === "string" ? data.content : "",
     priority: Number.isFinite(data.priority) ? Number(data.priority) : 10,
@@ -126,11 +158,32 @@ export async function updatePromptInjection(id, data) {
     targetKeys: Array.isArray(data.targetKeys)
       ? data.targetKeys.map((s) => String(s).trim()).filter(Boolean)
       : existing.targetKeys,
-    matchCondition: data.matchCondition !== undefined ? {
-      type: data.matchCondition?.type || "always",
-      pattern: typeof data.matchCondition?.pattern === "string" ? data.matchCondition.pattern.trim() : "",
-      caseSensitive: !!data.matchCondition?.caseSensitive,
-    } : existing.matchCondition,
+    matchCondition:
+      data.matchCondition !== undefined
+        ? Array.isArray(data.matchCondition?.conditions) && data.matchCondition.conditions.length > 0
+          ? {
+              logic: (data.matchCondition.logic || "AND").toUpperCase(),
+              conditions: data.matchCondition.conditions.map((c) => ({
+                field: c.field || "user_text",
+                operator: c.operator || c.type || "contains",
+                value:
+                  typeof c.value === "string"
+                    ? c.value.trim()
+                    : typeof c.pattern === "string"
+                    ? c.pattern.trim()
+                    : "",
+                caseSensitive: !!c.caseSensitive,
+              })),
+            }
+          : {
+              type: data.matchCondition?.type || "always",
+              pattern:
+                typeof data.matchCondition?.pattern === "string"
+                  ? data.matchCondition.pattern.trim()
+                  : "",
+              caseSensitive: !!data.matchCondition?.caseSensitive,
+            }
+        : existing.matchCondition,
     updatedAt: now,
   };
 
@@ -258,6 +311,111 @@ function matchesPattern(target, pattern) {
 }
 
 /**
+ * Evaluate an individual condition rule against request context
+ */
+export function evaluateConditionNode(
+  cond,
+  { userText = "", modelStr = "", provider = "", model = "", comboName = "" } = {}
+) {
+  if (!cond) return { matches: true, reason: "Empty condition" };
+
+  const field = cond.field || "user_text";
+  let targetVal = "";
+  if (field === "user_text") {
+    targetVal = userText || "";
+  } else if (field === "model") {
+    targetVal = model || (modelStr && modelStr.includes("/") ? modelStr.split("/")[1] : modelStr) || "";
+  } else if (field === "provider") {
+    targetVal = provider || (modelStr && modelStr.includes("/") ? modelStr.split("/")[0] : "") || "";
+  } else if (field === "combo") {
+    targetVal = comboName || "";
+  } else {
+    targetVal = userText || "";
+  }
+
+  const op = cond.operator || cond.type || "contains";
+  const val = (cond.value !== undefined ? cond.value : cond.pattern || "").trim();
+  const isCase = !!cond.caseSensitive;
+
+  if (op === "always") return { matches: true, reason: "Always matches" };
+  if (!val) return { matches: false, reason: `Condition value for field "${field}" is empty` };
+
+  const strA = isCase ? targetVal : targetVal.toLowerCase();
+  const strB = isCase ? val : val.toLowerCase();
+
+  switch (op) {
+    case "contains": {
+      const keywords = val.split(",").map((k) => k.trim()).filter(Boolean);
+      const matched = keywords.some((kw) => strA.includes(isCase ? kw : kw.toLowerCase()));
+      return {
+        matches: matched,
+        reason: matched
+          ? `Field "${field}" contains keyword "${val}"`
+          : `Field "${field}" does not contain keyword "${val}"`,
+      };
+    }
+    case "not_contains": {
+      const keywords = val.split(",").map((k) => k.trim()).filter(Boolean);
+      const matched = !keywords.some((kw) => strA.includes(isCase ? kw : kw.toLowerCase()));
+      return {
+        matches: matched,
+        reason: matched
+          ? `Field "${field}" does not contain negative keyword "${val}"`
+          : `Field "${field}" matched negative keyword "${val}"`,
+      };
+    }
+    case "equals": {
+      const matched = strA === strB;
+      return {
+        matches: matched,
+        reason: matched ? `Field "${field}" equals "${val}"` : `Field "${field}" does not equal "${val}"`,
+      };
+    }
+    case "not_equals": {
+      const matched = strA !== strB;
+      return {
+        matches: matched,
+        reason: matched ? `Field "${field}" does not equal "${val}"` : `Field "${field}" equals "${val}"`,
+      };
+    }
+    case "starts_with": {
+      const matched = strA.startsWith(strB);
+      return {
+        matches: matched,
+        reason: matched ? `Field "${field}" starts with "${val}"` : `Field "${field}" does not start with "${val}"`,
+      };
+    }
+    case "ends_with": {
+      const matched = strA.endsWith(strB);
+      return {
+        matches: matched,
+        reason: matched ? `Field "${field}" ends with "${val}"` : `Field "${field}" does not end with "${val}"`,
+      };
+    }
+    case "regex": {
+      try {
+        if (val.length > 250) return { matches: false, reason: "Regex pattern exceeds 250 character limit" };
+        if (/(\([^\)]*[*+]\)[*+])|(\[[^\]]*[*+]\)[*+])/.test(val)) {
+          return { matches: false, reason: "Potentially catastrophic regex pattern rejected" };
+        }
+        const flags = isCase ? "" : "i";
+        const boundedText = typeof targetVal === "string" ? targetVal.slice(0, 32768) : "";
+        const re = new RegExp(val, flags);
+        const matched = re.test(boundedText);
+        return {
+          matches: matched,
+          reason: matched ? `Regex /${val}/ matched "${field}"` : `Regex /${val}/ did not match "${field}"`,
+        };
+      } catch (err) {
+        return { matches: false, reason: `Regex error: ${err.message}` };
+      }
+    }
+    default:
+      return { matches: true, reason: "Default condition match" };
+  }
+}
+
+/**
  * Detailed evaluation of whether a rule matches request context, returning reason for debugging
  */
 export async function evaluateRuleMatch(
@@ -289,38 +447,37 @@ export async function evaluateRuleMatch(
     if (!matchesKey) return { matches: false, reason: "API key does not match target keys" };
   }
 
-  // 2. Keyword / Regex trigger condition check
-  if (rule.matchCondition && rule.matchCondition.type && rule.matchCondition.type !== "always") {
-    const text = userText || "";
-    const pattern = (rule.matchCondition.pattern || "").trim();
-    if (!pattern) return { matches: false, reason: "Trigger condition pattern is empty" };
-
-    if (rule.matchCondition.type === "contains") {
-      const keywords = pattern.split(",").map((k) => k.trim()).filter(Boolean);
-      const isCase = !!rule.matchCondition.caseSensitive;
-      const targetString = isCase ? text : text.toLowerCase();
-      const hasMatch = keywords.some((kw) => targetString.includes(isCase ? kw : kw.toLowerCase()));
-      if (!hasMatch) return { matches: false, reason: `User prompt does not contain keyword: "${pattern}"` };
-    } else if (rule.matchCondition.type === "not_contains") {
-      const keywords = pattern.split(",").map((k) => k.trim()).filter(Boolean);
-      if (keywords.length > 0) {
-        const isCase = !!rule.matchCondition.caseSensitive;
-        const targetString = isCase ? text : text.toLowerCase();
-        const hasMatch = keywords.some((kw) => targetString.includes(isCase ? kw : kw.toLowerCase()));
-        if (hasMatch) return { matches: false, reason: `User prompt matched negative keyword: "${pattern}"` };
+  // 2. Keyword / Multi-Condition Group trigger check
+  if (rule.matchCondition) {
+    if (Array.isArray(rule.matchCondition.conditions) && rule.matchCondition.conditions.length > 0) {
+      const logic = (rule.matchCondition.logic || "AND").toUpperCase();
+      const results = [];
+      for (const cond of rule.matchCondition.conditions) {
+        results.push(evaluateConditionNode(cond, { userText, modelStr, provider, model, comboName }));
       }
-    } else if (rule.matchCondition.type === "regex") {
-      try {
-        if (pattern.length > 250) return { matches: false, reason: "Regex pattern exceeds 250 character limit" };
-        if (/(\([^\)]*[*+]\)[*+])|(\[[^\]]*[*+]\)[*+])/.test(pattern)) {
-          return { matches: false, reason: "Potentially catastrophic regex pattern rejected" };
-        }
-        const flags = rule.matchCondition.caseSensitive ? "" : "i";
-        const boundedText = typeof text === "string" ? text.slice(0, 32768) : "";
-        const re = new RegExp(pattern, flags);
-        if (!re.test(boundedText)) return { matches: false, reason: `Regex /${pattern}/ did not match user text` };
-      } catch (err) {
-        return { matches: false, reason: `Regex error: ${err.message}` };
+
+      const groupMatches =
+        logic === "OR" ? results.some((r) => r.matches) : results.every((r) => r.matches);
+
+      if (!groupMatches) {
+        const failed = results
+          .filter((r) => !r.matches)
+          .map((r) => r.reason)
+          .join("; ");
+        return { matches: false, reason: `Condition group (${logic}) failed: ${failed}` };
+      }
+    } else if (rule.matchCondition.type && rule.matchCondition.type !== "always") {
+      const singleRes = evaluateConditionNode(
+        {
+          field: "user_text",
+          operator: rule.matchCondition.type,
+          value: rule.matchCondition.pattern,
+          caseSensitive: rule.matchCondition.caseSensitive,
+        },
+        { userText, modelStr, provider, model, comboName }
+      );
+      if (!singleRes.matches) {
+        return singleRes;
       }
     }
   }

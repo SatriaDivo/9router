@@ -4,6 +4,8 @@ import {
   POSITION_LABELS,
   TARGET_TYPE_LABELS,
   CONDITION_TYPES,
+  CONDITION_FIELDS,
+  CONDITION_OPERATORS,
   VARIABLE_CHIPS,
   POPULAR_MODELS,
 } from "../../src/app/(dashboard)/dashboard/prompt-injection/constants/promptConstants.js";
@@ -62,6 +64,25 @@ describe("Prompt Injection UI Constants & Templates Contract", () => {
     expect(values).toContain("contains");
     expect(values).toContain("not_contains");
     expect(values).toContain("regex");
+  });
+
+  it("validates multi-condition builder fields and operators", () => {
+    expect(CONDITION_FIELDS.length).toBeGreaterThanOrEqual(4);
+    const fieldValues = CONDITION_FIELDS.map((f) => f.value);
+    expect(fieldValues).toContain("user_text");
+    expect(fieldValues).toContain("model");
+    expect(fieldValues).toContain("provider");
+    expect(fieldValues).toContain("combo");
+
+    expect(CONDITION_OPERATORS.length).toBeGreaterThanOrEqual(6);
+    const opValues = CONDITION_OPERATORS.map((o) => o.value);
+    expect(opValues).toContain("contains");
+    expect(opValues).toContain("not_contains");
+    expect(opValues).toContain("equals");
+    expect(opValues).toContain("not_equals");
+    expect(opValues).toContain("starts_with");
+    expect(opValues).toContain("ends_with");
+    expect(opValues).toContain("regex");
   });
 
   it("validates all dynamic variable chips have non-empty templates and descriptions", () => {

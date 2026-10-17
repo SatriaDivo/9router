@@ -116,8 +116,21 @@ export function PromptRuleCard({
             </>
           )}
 
-          {/* Condition type badge */}
-          {rule.matchCondition?.type && rule.matchCondition.type !== "always" && (
+          {/* Compound Multi-Condition Badge */}
+          {Array.isArray(rule.matchCondition?.conditions) && rule.matchCondition.conditions.length > 0 && (
+            <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20 flex items-center gap-1 font-medium">
+              <span className="material-symbols-outlined text-[12px]">schema</span>
+              <span>{rule.matchCondition.logic || "AND"} Group</span>
+              <span className="font-mono text-[10px] px-1 py-0.2 rounded bg-amber-500/20">
+                {rule.matchCondition.conditions.length}
+              </span>
+            </span>
+          )}
+
+          {/* Simple Condition type badge */}
+          {(!rule.matchCondition?.conditions || rule.matchCondition.conditions.length === 0) &&
+            rule.matchCondition?.type &&
+            rule.matchCondition.type !== "always" && (
             <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20 flex items-center gap-1">
               <span className="material-symbols-outlined text-[12px]">
                 {rule.matchCondition.type === "not_contains" ? "block" : rule.matchCondition.type === "regex" ? "code" : "filter_alt"}

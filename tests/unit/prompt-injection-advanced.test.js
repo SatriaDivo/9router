@@ -14,6 +14,7 @@ import {
   recordRuleHits,
   applyPromptInjectionsToBody,
   invalidatePromptInjectionCache,
+  evaluateConditionNode,
 } from "../../src/lib/db/repos/promptInjectionRepo.js";
 import { GET, POST, PUT, DELETE } from "../../src/app/api/prompt-injection/route.js";
 
@@ -195,6 +196,109 @@ describe("Prompt Injection Studio - Edge Case Variable Interpolation", () => {
     expect(interpolateVariables(null)).toBe("");
     expect(interpolateVariables(undefined)).toBe("");
     expect(interpolateVariables(123)).toBe("");
+  });
+});
+
+describe("Prompt Injection Studio - Condition Operators and Multi-Condition Groups", () => {
+  const ctx = {
+    userText: "Write a high-performance Python scraper",
+    modelStr: "anthropic/claude-3-7-sonnet",
+    provider: "anthropic",
+    model: "claude-3-7-sonnet",
+    comboName: "production-coding",
+  };
+
+  it("evaluates equals and not_equals operators", () => {
+    expect(evaluateConditionNode({ field: "provider", operator: "equals", value: "anthropic" }, ctx).matches).toBe(true);
+    expect(evaluateConditionNode({ field: "provider", operator: "equals", value: "openai" }, ctx).matches).toBe(false);
+    expect(evaluateConditionNode({ field: "provider", operator: "not_equals", value: "openai" }, ctx).matches).toBe(true);
+  });
+
+  it("evaluates starts_with and ends_with operators", () => {
+    expect(evaluateConditionNode({ field: "model", operator: "starts_with", value: "claude-3" }, ctx).matches).toBe(true);
+    expect(evaluateConditionNode({ field: "model", operator: "ends_with", value: "sonnet" }, ctx).matches).toBe(true);
+    expect(evaluateConditionNode({ field: "model", operator: "starts_with", value: "gpt" }, ctx).matches).toBe(false);
+  });
+
+  it("evaluates compound condition group with AND logic", async () => {
+    const rule = {
+      name: "Compound AND Rule",
+      enabled: true,
+      content: "Compound Injected Prompt",
+      targetType: "all",
+      matchCondition: {
+        logic: "AND",
+        conditions: [
+          { field: "provider", operator: "equals", value: "anthropic" },
+          { field: "user_text", operator: "contains", value: "python" },
+        ],
+      },
+    };
+
+    expect(await isRuleMatching(rule, ctx)).toBe(true);
+
+    // If one condition fails in AND, the group fails
+    const failingCtx = { ...ctx, userText: "Write a Go service" };
+    expect(await isRuleMatching(rule, failingCtx)).toBe(false);
+  });
+
+  it("evaluates compound condition group with OR logic", async () => {
+    const rule = {
+      name: "Compound OR Rule",
+      enabled: true,
+      content: "Compound Injected Prompt",
+      targetType: "all",
+      matchCondition: {
+        logic: "OR",
+        conditions: [
+          { field: "provider", operator: "equals", value: "openai" },
+          { field: "user_text", operator: "contains", value: "python" },
+        ],
+      },
+    };
+
+    // provider is anthropic (false), but user_text contains python (true) -> OR matches
+    expect(await isRuleMatching(rule, ctx)).toBe(true);
+
+    const neitherCtx = { ...ctx, provider: "cohere", userText: "Hello world" };
+    expect(await isRuleMatching(rule, neitherCtx)).toBe(false);
+  });
+
+  it("persists and retrieves rules with compound condition groups via database CRUD", async () => {
+    const created = await createPromptInjection({
+      name: "Persisted Compound Rule",
+      targetType: "all",
+      content: "Persisted Injected Content",
+      matchCondition: {
+        logic: "AND",
+        conditions: [
+          { field: "provider", operator: "equals", value: "anthropic" },
+          { field: "user_text", operator: "contains", value: "python" },
+        ],
+      },
+    });
+
+    try {
+      const fetched = await getPromptInjectionById(created.id);
+      expect(fetched).not.toBeNull();
+      expect(fetched.matchCondition.logic).toBe("AND");
+      expect(fetched.matchCondition.conditions).toHaveLength(2);
+      expect(fetched.matchCondition.conditions[0].field).toBe("provider");
+      expect(fetched.matchCondition.conditions[1].field).toBe("user_text");
+
+      const updated = await updatePromptInjection(created.id, {
+        matchCondition: {
+          logic: "OR",
+          conditions: [
+            { field: "model", operator: "starts_with", value: "claude-3" },
+          ],
+        },
+      });
+      expect(updated.matchCondition.logic).toBe("OR");
+      expect(updated.matchCondition.conditions).toHaveLength(1);
+    } finally {
+      await deletePromptInjection(created.id);
+    }
   });
 });
 

@@ -109,6 +109,23 @@ export const CONDITION_TYPES = [
   { value: "regex", label: "Regular Expression (RegEx)", desc: "Evaluates user prompt with a ReDoS-protected regular expression" },
 ];
 
+export const CONDITION_FIELDS = [
+  { value: "user_text", label: "User Prompt Text" },
+  { value: "model", label: "Model Identifier" },
+  { value: "provider", label: "Provider Name" },
+  { value: "combo", label: "Combo Name" },
+];
+
+export const CONDITION_OPERATORS = [
+  { value: "contains", label: "Contains Keyword(s)" },
+  { value: "not_contains", label: "Does Not Contain" },
+  { value: "equals", label: "Exactly Equals" },
+  { value: "not_equals", label: "Does Not Equal" },
+  { value: "starts_with", label: "Starts With" },
+  { value: "ends_with", label: "Ends With" },
+  { value: "regex", label: "Matches RegEx" },
+];
+
 export const VARIABLE_CHIPS = [
   { label: "{{model}}", desc: "Resolved model string (e.g. gpt-4o)" },
   { label: "{{provider}}", desc: "Upstream provider name" },

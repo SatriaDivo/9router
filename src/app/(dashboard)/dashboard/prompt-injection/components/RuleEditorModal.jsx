@@ -6,6 +6,8 @@ import {
   POSITION_LABELS,
   TARGET_TYPE_LABELS,
   CONDITION_TYPES,
+  CONDITION_FIELDS,
+  CONDITION_OPERATORS,
   VARIABLE_CHIPS,
 } from "../constants/promptConstants";
 
@@ -31,6 +33,8 @@ export function RuleEditorModal({
       type: "always",
       pattern: "",
       caseSensitive: false,
+      logic: "AND",
+      conditions: [],
     },
     position: "system_prepend",
     content: "",
@@ -38,6 +42,7 @@ export function RuleEditorModal({
   });
 
   const [activeTab, setActiveTab] = useState("scope"); // "scope" | "trigger" | "prompt"
+  const [conditionMode, setConditionMode] = useState("simple"); // "simple" | "group"
   const [formError, setFormError] = useState("");
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [showComboDropdown, setShowComboDropdown] = useState(false);
@@ -49,6 +54,11 @@ export function RuleEditorModal({
 
   useEffect(() => {
     if (rule) {
+      const hasGroup =
+        Array.isArray(rule.matchCondition?.conditions) &&
+        rule.matchCondition.conditions.length > 0;
+      setConditionMode(hasGroup ? "group" : "simple");
+
       setFormData({
         name: rule.name || "",
         description: rule.description || "",
@@ -61,12 +71,24 @@ export function RuleEditorModal({
           type: rule.matchCondition?.type || "always",
           pattern: rule.matchCondition?.pattern || "",
           caseSensitive: !!rule.matchCondition?.caseSensitive,
+          logic: rule.matchCondition?.logic || "AND",
+          conditions: hasGroup
+            ? [...rule.matchCondition.conditions]
+            : [
+                {
+                  field: "user_text",
+                  operator: "contains",
+                  value: "",
+                  caseSensitive: false,
+                },
+              ],
         },
         position: rule.position || "system_prepend",
         content: rule.content || "",
         priority: rule.priority ?? 10,
       });
     } else {
+      setConditionMode("simple");
       setFormData({
         name: "",
         description: "",
@@ -79,6 +101,15 @@ export function RuleEditorModal({
           type: "always",
           pattern: "",
           caseSensitive: false,
+          logic: "AND",
+          conditions: [
+            {
+              field: "user_text",
+              operator: "contains",
+              value: "",
+              caseSensitive: false,
+            },
+          ],
         },
         position: "system_prepend",
         content: "",
@@ -88,6 +119,41 @@ export function RuleEditorModal({
     setFormError("");
     setActiveTab("scope");
   }, [rule, isOpen]);
+
+  const addConditionRow = () => {
+    setFormData((p) => ({
+      ...p,
+      matchCondition: {
+        ...p.matchCondition,
+        conditions: [
+          ...(p.matchCondition.conditions || []),
+          { field: "user_text", operator: "contains", value: "", caseSensitive: false },
+        ],
+      },
+    }));
+  };
+
+  const removeConditionRow = (index) => {
+    setFormData((p) => ({
+      ...p,
+      matchCondition: {
+        ...p.matchCondition,
+        conditions: (p.matchCondition.conditions || []).filter((_, idx) => idx !== index),
+      },
+    }));
+  };
+
+  const updateConditionRow = (index, updates) => {
+    setFormData((p) => ({
+      ...p,
+      matchCondition: {
+        ...p.matchCondition,
+        conditions: (p.matchCondition.conditions || []).map((c, idx) =>
+          idx === index ? { ...c, ...updates } : c
+        ),
+      },
+    }));
+  };
 
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
@@ -103,7 +169,23 @@ export function RuleEditorModal({
     }
 
     setFormError("");
-    const res = await onSave(formData);
+    const payload = {
+      ...formData,
+      matchCondition:
+        conditionMode === "group"
+          ? {
+              logic: formData.matchCondition.logic || "AND",
+              conditions: (formData.matchCondition.conditions || []).filter(
+                (c) => c && (c.value || c.pattern)
+              ),
+            }
+          : {
+              type: formData.matchCondition.type || "always",
+              pattern: formData.matchCondition.pattern || "",
+              caseSensitive: !!formData.matchCondition.caseSensitive,
+            },
+    };
+    const res = await onSave(payload);
     if (res?.success) {
       onClose();
     } else if (res?.error) {
@@ -370,89 +452,256 @@ export function RuleEditorModal({
 
           {/* TAB 2: Triggers & Conditions */}
           <div className={activeTab === "trigger" ? "flex flex-col gap-3.5" : "hidden"}>
-            <div className="flex flex-col gap-1.5">
-                <label className="font-semibold text-text">Trigger Condition</label>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  {CONDITION_TYPES.map((cond) => (
-                    <button
-                      key={cond.value}
-                      type="button"
-                      onClick={() =>
-                        setFormData((p) => ({
-                          ...p,
-                          matchCondition: { ...p.matchCondition, type: cond.value },
-                        }))
-                      }
-                      className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all ${
-                        formData.matchCondition.type === cond.value
-                          ? "bg-primary/10 border-primary/40 text-primary shadow-sm"
-                          : "bg-surface border-border/60 text-text-muted hover:text-text hover:bg-surface-hover"
-                      }`}
+            {/* Condition Mode Selector */}
+            <div className="flex items-center justify-between p-2 rounded-xl bg-surface/50 border border-border/40">
+              <span className="font-semibold text-text text-xs flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[16px] text-primary">rule</span>
+                Condition Builder Mode
+              </span>
+              <div className="flex items-center gap-1 bg-surface rounded-lg p-0.5 border border-border/60">
+                <button
+                  type="button"
+                  onClick={() => setConditionMode("simple")}
+                  className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
+                    conditionMode === "simple"
+                      ? "bg-primary text-white"
+                      : "text-text-muted hover:text-text"
+                  }`}
+                >
+                  Simple Condition
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConditionMode("group");
+                    if (!formData.matchCondition.conditions || formData.matchCondition.conditions.length === 0) {
+                      addConditionRow();
+                    }
+                  }}
+                  className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors flex items-center gap-1 ${
+                    conditionMode === "group"
+                      ? "bg-primary text-white"
+                      : "text-text-muted hover:text-text"
+                  }`}
+                >
+                  <span>Multi-Condition (AND/OR)</span>
+                  <span className="px-1 py-0.2 rounded bg-amber-500/20 text-amber-500 text-[9px] font-semibold uppercase">
+                    Pro
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {conditionMode === "simple" ? (
+              <>
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-semibold text-text">Trigger Condition</label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {CONDITION_TYPES.map((cond) => (
+                      <button
+                        key={cond.value}
+                        type="button"
+                        onClick={() =>
+                          setFormData((p) => ({
+                            ...p,
+                            matchCondition: { ...p.matchCondition, type: cond.value },
+                          }))
+                        }
+                        className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all ${
+                          formData.matchCondition.type === cond.value
+                            ? "bg-primary/10 border-primary/40 text-primary shadow-sm"
+                            : "bg-surface border-border/60 text-text-muted hover:text-text hover:bg-surface-hover"
+                        }`}
+                      >
+                        <div className="font-semibold text-xs">{cond.label}</div>
+                        <div className="text-[11px] opacity-75 mt-1 leading-tight">{cond.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {formData.matchCondition.type !== "always" && (
+                  <div className="flex flex-col gap-3 p-3.5 rounded-xl border border-amber-500/20 bg-amber-500/5">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="font-semibold text-text">
+                        {formData.matchCondition.type === "regex"
+                          ? "Regular Expression Pattern (ReDoS Protected)"
+                          : "Match Keywords (comma separated)"}
+                      </label>
+                      <Input
+                        placeholder={
+                          formData.matchCondition.type === "regex"
+                            ? "e.g. ^(write|create)\\s+code"
+                            : "e.g. coding, python, bug, refactor"
+                        }
+                        value={formData.matchCondition.pattern}
+                        onChange={(e) =>
+                          setFormData((p) => ({
+                            ...p,
+                            matchCondition: { ...p.matchCondition, pattern: e.target.value },
+                          }))
+                        }
+                        className="font-mono text-xs"
+                      />
+                      <span className="text-[11px] text-text-muted">
+                        {formData.matchCondition.type === "not_contains"
+                          ? "If user prompt contains any of these words, the rule will be skipped."
+                          : formData.matchCondition.type === "regex"
+                          ? "Max 250 characters. Catastrophic nested quantifiers are safely barred."
+                          : "If user prompt contains any of these comma-separated keywords, the rule triggers."}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="caseSensitive"
+                        checked={formData.matchCondition.caseSensitive}
+                        onChange={(e) =>
+                          setFormData((p) => ({
+                            ...p,
+                            matchCondition: {
+                              ...p.matchCondition,
+                              caseSensitive: e.target.checked,
+                            },
+                          }))
+                        }
+                        className="rounded border-border text-primary focus:ring-primary"
+                      />
+                      <label htmlFor="caseSensitive" className="text-xs text-text select-none cursor-pointer">
+                        Case-sensitive matching
+                      </label>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              /* Compound Multi-Condition Builder */
+              <div className="flex flex-col gap-3 p-3.5 rounded-xl border border-primary/20 bg-surface/40">
+                {/* Logic Group Header: AND / OR */}
+                <div className="flex items-center justify-between pb-2 border-b border-border/40">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-text text-xs">Match Logic:</span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setFormData((p) => ({
+                            ...p,
+                            matchCondition: { ...p.matchCondition, logic: "AND" },
+                          }))
+                        }
+                        className={`px-2.5 py-0.5 rounded text-xs font-semibold ${
+                          (formData.matchCondition.logic || "AND") === "AND"
+                            ? "bg-primary text-white"
+                            : "bg-surface text-text-muted hover:text-text border border-border/50"
+                        }`}
+                      >
+                        AND (All Must Match)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setFormData((p) => ({
+                            ...p,
+                            matchCondition: { ...p.matchCondition, logic: "OR" },
+                          }))
+                        }
+                        className={`px-2.5 py-0.5 rounded text-xs font-semibold ${
+                          formData.matchCondition.logic === "OR"
+                            ? "bg-primary text-white"
+                            : "bg-surface text-text-muted hover:text-text border border-border/50"
+                        }`}
+                      >
+                        OR (Any Match)
+                      </button>
+                    </div>
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={addConditionRow}
+                    className="h-7 text-[11px] gap-1 px-2.5"
+                  >
+                    <span className="material-symbols-outlined text-[14px]">add</span>
+                    Add Condition
+                  </Button>
+                </div>
+
+                {/* Condition Rows List */}
+                <div className="flex flex-col gap-2.5">
+                  {(formData.matchCondition.conditions || []).map((cond, idx) => (
+                    <div
+                      key={idx}
+                      className="flex flex-col md:flex-row items-start md:items-center gap-2 p-2.5 rounded-lg border border-border/60 bg-surface/70"
                     >
-                      <div className="font-semibold text-xs">{cond.label}</div>
-                      <div className="text-[11px] opacity-75 mt-1 leading-tight">
-                        {cond.desc}
-                      </div>
-                    </button>
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-hover text-text-muted shrink-0 border border-border/40">
+                        IF #{idx + 1}
+                      </span>
+
+                      {/* Field Target Select */}
+                      <select
+                        value={cond.field || "user_text"}
+                        onChange={(e) => updateConditionRow(idx, { field: e.target.value })}
+                        className="bg-surface border border-border/60 text-xs rounded-lg px-2 py-1.5 text-text focus:outline-none focus:ring-1 focus:ring-primary shrink-0"
+                      >
+                        {CONDITION_FIELDS.map((f) => (
+                          <option key={f.value} value={f.value}>
+                            {f.label}
+                          </option>
+                        ))}
+                      </select>
+
+                      {/* Operator Select */}
+                      <select
+                        value={cond.operator || "contains"}
+                        onChange={(e) => updateConditionRow(idx, { operator: e.target.value })}
+                        className="bg-surface border border-border/60 text-xs rounded-lg px-2 py-1.5 text-text focus:outline-none focus:ring-1 focus:ring-primary shrink-0"
+                      >
+                        {CONDITION_OPERATORS.map((op) => (
+                          <option key={op.value} value={op.value}>
+                            {op.label}
+                          </option>
+                        ))}
+                      </select>
+
+                      {/* Value Input */}
+                      <Input
+                        placeholder="Keyword, regex, or value..."
+                        value={cond.value || cond.pattern || ""}
+                        onChange={(e) => updateConditionRow(idx, { value: e.target.value })}
+                        className="text-xs h-8 min-w-[140px] flex-1 font-mono"
+                      />
+
+                      {/* Case sensitive toggle */}
+                      <label className="flex items-center gap-1 text-[11px] text-text-muted hover:text-text cursor-pointer select-none shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={!!cond.caseSensitive}
+                          onChange={(e) => updateConditionRow(idx, { caseSensitive: e.target.checked })}
+                          className="rounded border-border text-primary focus:ring-primary text-xs"
+                        />
+                        <span>Match case</span>
+                      </label>
+
+                      {/* Delete button */}
+                      <button
+                        type="button"
+                        onClick={() => removeConditionRow(idx)}
+                        disabled={(formData.matchCondition.conditions || []).length <= 1}
+                        className="p-1 rounded text-text-muted hover:text-red-500 disabled:opacity-30 disabled:hover:text-text-muted transition-colors shrink-0"
+                        title="Remove condition"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">delete</span>
+                      </button>
+                    </div>
                   ))}
                 </div>
               </div>
-
-              {formData.matchCondition.type !== "always" && (
-                <div className="flex flex-col gap-3 p-3.5 rounded-xl border border-amber-500/20 bg-amber-500/5">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="font-semibold text-text">
-                      {formData.matchCondition.type === "regex"
-                        ? "Regular Expression Pattern (ReDoS Protected)"
-                        : "Match Keywords (comma separated)"}
-                    </label>
-                    <Input
-                      placeholder={
-                        formData.matchCondition.type === "regex"
-                          ? "e.g. ^(write|create)\\s+code"
-                          : "e.g. coding, python, bug, refactor"
-                      }
-                      value={formData.matchCondition.pattern}
-                      onChange={(e) =>
-                        setFormData((p) => ({
-                          ...p,
-                          matchCondition: { ...p.matchCondition, pattern: e.target.value },
-                        }))
-                      }
-                      className="font-mono text-xs"
-                    />
-                    <span className="text-[11px] text-text-muted">
-                      {formData.matchCondition.type === "not_contains"
-                        ? "If user prompt contains any of these words, the rule will be skipped."
-                        : formData.matchCondition.type === "regex"
-                        ? "Max 250 characters. Catastrophic nested quantifiers are safely barred."
-                        : "If user prompt contains any of these comma-separated keywords, the rule triggers."}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="caseSensitive"
-                      checked={formData.matchCondition.caseSensitive}
-                      onChange={(e) =>
-                        setFormData((p) => ({
-                          ...p,
-                          matchCondition: {
-                            ...p.matchCondition,
-                            caseSensitive: e.target.checked,
-                          },
-                        }))
-                      }
-                      className="rounded border-border text-primary focus:ring-primary"
-                    />
-                    <label htmlFor="caseSensitive" className="text-xs text-text select-none cursor-pointer">
-                      Case-sensitive matching
-                    </label>
-                  </div>
-                </div>
-              )}
-            </div>
+            )}
+          </div>
 
           {/* TAB 3: Prompt Content & Variables */}
           <div className={activeTab === "prompt" ? "flex flex-col gap-3.5" : "hidden"}>
