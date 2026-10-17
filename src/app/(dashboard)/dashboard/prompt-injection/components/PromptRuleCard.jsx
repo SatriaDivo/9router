@@ -87,6 +87,7 @@ export function PromptRuleCard({
             <Toggle
               checked={rule.enabled}
               onChange={() => onToggle(rule.id, rule.enabled)}
+              label={`Toggle ${rule.name}`}
               size="sm"
             />
           </div>
@@ -156,7 +157,7 @@ export function PromptRuleCard({
         </div>
 
         {/* Footer actions */}
-        <div className="flex items-center justify-between pt-1 border-t border-border/30 text-xs text-text-muted">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 border-t border-border/30 text-xs text-text-muted">
           <div className="text-[11px]">
             {rule.lastTriggeredAt
               ? `Last hit ${new Date(rule.lastTriggeredAt).toLocaleString()}`
@@ -165,17 +166,21 @@ export function PromptRuleCard({
 
           <div className="flex items-center gap-1">
             <button
+              type="button"
               onClick={() => onTestRule(rule)}
               className="p-1.5 hover:bg-surface-hover rounded-md text-text-muted hover:text-primary transition-colors"
               title="Test dry-run this rule in Simulator"
+              aria-label="Test dry-run this rule in Simulator"
             >
               <span className="material-symbols-outlined text-[16px]">play_arrow</span>
             </button>
 
             <button
+              type="button"
               onClick={() => copy(rule.content)}
               className="p-1.5 hover:bg-surface-hover rounded-md text-text-muted hover:text-text transition-colors"
               title={copied ? "Copied!" : "Copy prompt text"}
+              aria-label="Copy prompt text"
             >
               <span className="material-symbols-outlined text-[16px]">
                 {copied ? "check" : "content_copy"}
@@ -183,33 +188,41 @@ export function PromptRuleCard({
             </button>
 
             <button
+              type="button"
               onClick={() => onDuplicate(rule)}
               className="p-1.5 hover:bg-surface-hover rounded-md text-text-muted hover:text-text transition-colors"
               title="Duplicate rule"
+              aria-label="Duplicate rule"
             >
-              <span className="material-symbols-outlined text-[16px]">content_copy</span>
+              <span className="material-symbols-outlined text-[16px]">library_add</span>
             </button>
 
             <button
+              type="button"
               onClick={() => onHistory?.(rule)}
               className="p-1.5 hover:bg-surface-hover rounded-md text-text-muted hover:text-text transition-colors"
               title="View revision history & rollback"
+              aria-label="View revision history & rollback"
             >
               <span className="material-symbols-outlined text-[16px]">history</span>
             </button>
 
             <button
+              type="button"
               onClick={() => onEdit(rule)}
               className="p-1.5 hover:bg-surface-hover rounded-md text-text-muted hover:text-primary transition-colors"
               title="Edit rule"
+              aria-label="Edit rule"
             >
               <span className="material-symbols-outlined text-[16px]">edit</span>
             </button>
 
             <button
+              type="button"
               onClick={() => onDelete(rule)}
               className="p-1.5 hover:bg-surface-hover rounded-md text-text-muted hover:text-red-500 transition-colors"
               title="Delete rule"
+              aria-label="Delete rule"
             >
               <span className="material-symbols-outlined text-[16px]">delete</span>
             </button>

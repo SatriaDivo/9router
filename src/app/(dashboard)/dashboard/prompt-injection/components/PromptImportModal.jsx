@@ -24,6 +24,7 @@ export function PromptImportModal({ isOpen, onClose, onImport, loading = false }
       }
     };
     reader.readAsText(file);
+    e.target.value = "";
   };
 
   const validateAndParse = (raw) => {

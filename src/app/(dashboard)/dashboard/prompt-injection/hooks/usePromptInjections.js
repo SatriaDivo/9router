@@ -176,23 +176,29 @@ export function usePromptInjections() {
         throw new Error("Invalid or empty rules array");
       }
       if (mode === "replace") {
-        for (const existing of rules) {
-          await deleteRule(existing.id);
-        }
+        await Promise.allSettled(
+          rules.map((existing) =>
+            fetch(`/api/prompt-injection?id=${encodeURIComponent(existing.id)}`, { method: "DELETE" })
+          )
+        );
       }
       for (const r of rulesToImport) {
-        await createRule({
-          name: r.name || "Imported Rule",
-          description: r.description || "",
-          enabled: r.enabled !== false,
-          targetType: r.targetType || "all",
-          targetCombos: r.targetCombos || [],
-          targetModels: r.targetModels || [],
-          targetKeys: r.targetKeys || [],
-          matchCondition: r.matchCondition || { type: "always", pattern: "", caseSensitive: false },
-          position: r.position || "system_prepend",
-          content: r.content || "",
-          priority: r.priority || 10,
+        await fetch("/api/prompt-injection", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: r.name || "Imported Rule",
+            description: r.description || "",
+            enabled: r.enabled !== false,
+            targetType: r.targetType || "all",
+            targetCombos: r.targetCombos || [],
+            targetModels: r.targetModels || [],
+            targetKeys: r.targetKeys || [],
+            matchCondition: r.matchCondition || { type: "always", pattern: "", caseSensitive: false },
+            position: r.position || "system_prepend",
+            content: r.content || "",
+            priority: r.priority || 10,
+          }),
         });
       }
       await fetchRules();

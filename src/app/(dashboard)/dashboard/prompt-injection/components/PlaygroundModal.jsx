@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Modal, Button, Input } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { usePlaygroundSimulator, BUILTIN_TEST_CASES } from "../hooks/usePlaygroundSimulator";
@@ -11,6 +11,14 @@ export function PlaygroundModal({ isOpen, onClose, combos = [], targetRule = nul
   const { copied, copy } = useCopyToClipboard();
   const [saveName, setSaveName] = useState("");
   const [showSaveInput, setShowSaveInput] = useState(false);
+
+  useEffect(() => {
+    if (targetRule?.id) {
+      sim.setActiveRuleId(targetRule.id);
+    } else {
+      sim.setActiveRuleId("");
+    }
+  }, [targetRule, isOpen]);
 
   if (!isOpen) return null;
 
@@ -30,7 +38,7 @@ export function PlaygroundModal({ isOpen, onClose, combos = [], targetRule = nul
           ? `Prompt Simulator — Testing: ${targetRule.name}`
           : "Prompt Injection Interactive Simulator & Diff"
       }
-      size="xl"
+      size="full"
     >
       <div className="flex flex-col gap-4 text-xs">
         {/* Presets and Test Cases Bar */}

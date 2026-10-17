@@ -792,4 +792,137 @@ describe("Security, ReDoS Guard, and Advanced Protocol Hardening", () => {
       await deletePromptInjection(r.id);
     }
   });
+
+  describe("Prompt Injection Studio - Engine Hardening, ReDoS Guard & Security Quality", () => {
+    it("rejects catastrophic alternation and nested quantifier ReDoS patterns", () => {
+      const dangerousPatterns = [
+        "(a|a)+$",
+        "(a|ab)+$",
+        "(\\w|\\s)+$",
+        "(a+)+",
+        "([a-z]+)*",
+        "(a{1,5})+",
+      ];
+
+      for (const pattern of dangerousPatterns) {
+        const res = evaluateConditionNode(
+          { field: "user_text", operator: "regex", value: pattern },
+          { userText: "a".repeat(25) + "!" }
+        );
+        expect(res.matches).toBe(false);
+        expect(res.reason).toContain("catastrophic regex pattern rejected");
+      }
+    });
+
+    it("evaluates null, numeric, and empty condition values safely without crashing", () => {
+      const nullRes = evaluateConditionNode(
+        { field: "user_text", operator: "contains", value: null },
+        { userText: "test message" }
+      );
+      expect(nullRes.matches).toBe(false);
+
+      const numRes = evaluateConditionNode(
+        { field: "user_text", operator: "equals", value: 12345 },
+        { userText: "12345" }
+      );
+      expect(numRes.matches).toBe(true);
+
+      const unknownRes = evaluateConditionNode(
+        { field: "user_text", operator: "invalid_op", value: "foo" },
+        { userText: "foo" }
+      );
+      expect(unknownRes.matches).toBe(false);
+      expect(unknownRes.reason).toContain("Unsupported condition operator");
+    });
+
+    it("coerces string priorities and prevents silent reset to default 10", async () => {
+      const r = await createPromptInjection({
+        name: "Priority String Rule",
+        content: "Priority Content",
+        priority: 7,
+      });
+
+      try {
+        const updated = await updatePromptInjection(r.id, {
+          priority: "3",
+        });
+        expect(updated.priority).toBe(3);
+
+        const fetched = await getPromptInjectionById(r.id);
+        expect(fetched.priority).toBe(3);
+      } finally {
+        await deletePromptInjection(r.id);
+      }
+    });
+
+    it("rolls back reorder revision snapshot to previous priority order", async () => {
+      const r1 = await createPromptInjection({ name: "Order Rule 1", content: "P1", priority: 1 });
+      const r2 = await createPromptInjection({ name: "Order Rule 2", content: "P2", priority: 2 });
+
+      try {
+        // Reorder
+        await reorderPromptInjections([r2.id, r1.id]);
+        const revs = await listPromptInjectionRevisions({ ruleId: "reorder" });
+        const reorderRev = revs.find((rv) => rv.action === "reorder");
+        expect(reorderRev).toBeDefined();
+
+        // Roll back the reorder
+        const rbRes = await rollbackPromptInjectionRevision(reorderRev.id);
+        expect(rbRes.success).toBe(true);
+        expect(rbRes.action).toBe("reorder_rollback");
+
+        const f1 = await getPromptInjectionById(r1.id);
+        const f2 = await getPromptInjectionById(r2.id);
+        expect(f2.priority).toBe(1);
+        expect(f1.priority).toBe(2);
+      } finally {
+        await deletePromptInjection(r1.id);
+        await deletePromptInjection(r2.id);
+      }
+    });
+
+    it("isolates simulation execution when ruleId is provided", async () => {
+      const rA = await createPromptInjection({
+        name: "Sim Rule A",
+        content: "Rule A Applied",
+        targetType: "all",
+        position: "system_prepend",
+      });
+      const rB = await createPromptInjection({
+        name: "Sim Rule B",
+        content: "Rule B Applied",
+        targetType: "all",
+        position: "system_prepend",
+      });
+
+      try {
+        const simReq = new Request("http://localhost/api/prompt-injection", {
+          method: "POST",
+          body: JSON.stringify({
+            simulate: true,
+            ruleId: rB.id,
+            body: { messages: [{ role: "user", content: "Testing simulation isolation" }] },
+          }),
+        });
+        const simRes = await POST(simReq);
+        expect(simRes.status).toBe(200);
+        const data = await simRes.json();
+
+        expect(data.injectedRules).toContain("Sim Rule B");
+        expect(data.injectedRules).not.toContain("Sim Rule A");
+      } finally {
+        await deletePromptInjection(rA.id);
+        await deletePromptInjection(rB.id);
+      }
+    });
+
+    it("reports mutation false when payload role turn is absent", () => {
+      const bodyWithNoUser = {
+        messages: [{ role: "system", content: "System message only" }],
+      };
+      const res = executeInjection(bodyWithNoUser, "user_prepend", "Prepended text");
+      expect(res.mutated).toBe(false);
+      expect(res.reason).toContain("No suitable user message turn found");
+    });
+  });
 });

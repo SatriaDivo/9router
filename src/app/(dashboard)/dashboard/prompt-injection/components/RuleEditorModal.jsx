@@ -49,8 +49,18 @@ export function RuleEditorModal({
   const [showKeyDropdown, setShowKeyDropdown] = useState(false);
   const [comboSearch, setComboSearch] = useState("");
   const [keySearch, setKeySearch] = useState("");
+  const [customModelInput, setCustomModelInput] = useState("");
 
   const textareaRef = useRef(null);
+
+  const handleAddCustomModel = () => {
+    const val = customModelInput.trim();
+    if (!val) return;
+    if (!formData.targetModels.includes(val)) {
+      setFormData((p) => ({ ...p, targetModels: [...p.targetModels, val] }));
+    }
+    setCustomModelInput("");
+  };
 
   useEffect(() => {
     if (rule) {
@@ -201,7 +211,7 @@ export function RuleEditorModal({
     const area = textareaRef.current;
     const start = area.selectionStart;
     const end = area.selectionEnd;
-    const prevText = formData.content;
+    const prevText = formData.content || "";
     const nextText = prevText.substring(0, start) + varName + prevText.substring(end);
     setFormData((prev) => ({ ...prev, content: nextText }));
     setTimeout(() => {
@@ -238,7 +248,8 @@ export function RuleEditorModal({
       <Modal
         isOpen={isOpen}
         onClose={onClose}
-        title={rule ? `Edit Rule: ${rule.name}` : "Create Prompt Injection Rule"}
+        closeOnOverlay={false}
+        title={rule ? (rule.id ? `Edit Rule: ${rule.name}` : `Create Rule from Template: ${rule.name}`) : "Create Prompt Injection Rule"}
         size="lg"
       >
         <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4 text-xs">
@@ -250,11 +261,11 @@ export function RuleEditorModal({
           )}
 
           {/* Navigation Tabs */}
-          <div className="flex items-center gap-1 border-b border-border/50 pb-2">
+          <div className="flex items-center gap-1 border-b border-border/50 pb-2 overflow-x-auto scrollbar-none flex-nowrap">
             <button
               type="button"
               onClick={() => setActiveTab("scope")}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 shrink-0 ${
                 activeTab === "scope"
                   ? "bg-primary/10 text-primary border border-primary/20"
                   : "text-text-muted hover:text-text hover:bg-surface-hover"
@@ -267,7 +278,7 @@ export function RuleEditorModal({
             <button
               type="button"
               onClick={() => setActiveTab("trigger")}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 shrink-0 ${
                 activeTab === "trigger"
                   ? "bg-primary/10 text-primary border border-primary/20"
                   : "text-text-muted hover:text-text hover:bg-surface-hover"
@@ -280,7 +291,7 @@ export function RuleEditorModal({
             <button
               type="button"
               onClick={() => setActiveTab("prompt")}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 shrink-0 ${
                 activeTab === "prompt"
                   ? "bg-primary/10 text-primary border border-primary/20"
                   : "text-text-muted hover:text-text hover:bg-surface-hover"
@@ -387,6 +398,30 @@ export function RuleEditorModal({
                       ))
                     )}
                   </div>
+
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <Input
+                      placeholder="Type custom model or wildcard (e.g. claude-*-sonnet)..."
+                      value={customModelInput}
+                      onChange={(e) => setCustomModelInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddCustomModel();
+                        }
+                      }}
+                      className="text-xs h-7"
+                    />
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="secondary"
+                      onClick={handleAddCustomModel}
+                      className="h-7 px-3 text-xs shrink-0"
+                    >
+                      Add
+                    </Button>
+                  </div>
                 </div>
               )}
 
@@ -442,6 +477,73 @@ export function RuleEditorModal({
                           }`}
                         >
                           {cmb.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* API Keys restriction (optional) */}
+              {Array.isArray(apiKeys) && apiKeys.length > 0 && (
+                <div className="flex flex-col gap-2 p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-text flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-[16px] text-emerald-500">key</span>
+                      Target API Keys (Optional Restriction)
+                    </span>
+                    <span className="text-[10px] text-text-muted">
+                      {formData.targetKeys.length === 0 ? "Applies to all keys" : `${formData.targetKeys.length} key(s) restricted`}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5 min-h-[32px] p-2 bg-surface rounded-lg border border-border/50">
+                    {formData.targetKeys.length === 0 ? (
+                      <span className="text-[11px] text-text-muted">
+                        Applies to all API keys unless restricted to specific keys below.
+                      </span>
+                    ) : (
+                      formData.targetKeys.map((kId) => {
+                        const keyObj = apiKeys.find((k) => k.id === kId || k.key === kId || k.name === kId);
+                        return (
+                          <span
+                            key={kId}
+                            className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-mono text-[11px] flex items-center gap-1"
+                          >
+                            {keyObj?.name || kId}
+                            <button type="button" onClick={() => removeKeyTag(kId)}>
+                              <span className="material-symbols-outlined text-[12px] hover:text-red-500">close</span>
+                            </button>
+                          </span>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-1">
+                    {apiKeys.map((k) => {
+                      const isSelected = formData.targetKeys.includes(k.id) || formData.targetKeys.includes(k.key);
+                      return (
+                        <button
+                          key={k.id}
+                          type="button"
+                          onClick={() => {
+                            if (isSelected) {
+                              removeKeyTag(k.id);
+                            } else {
+                              setFormData((p) => ({
+                                ...p,
+                                targetKeys: [...p.targetKeys, k.id],
+                              }));
+                            }
+                          }}
+                          className={`px-2 py-1 rounded-md border text-[11px] transition-colors ${
+                            isSelected
+                              ? "bg-emerald-600 text-white border-emerald-600"
+                              : "bg-surface hover:bg-surface-hover border-border/60 text-text"
+                          }`}
+                        >
+                          {k.name || k.id}
                         </button>
                       );
                     })}

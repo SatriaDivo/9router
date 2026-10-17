@@ -10,6 +10,7 @@ import {
   rollbackPromptInjectionRevision,
   applyPromptInjectionsToBody,
   isRuleMatching,
+  evaluateRuleMatch,
   interpolateVariables,
   executeInjection,
   extractUserText,
@@ -52,8 +53,12 @@ export async function POST(request) {
       if (!revisionId) {
         return NextResponse.json({ error: "Revision ID is required for rollback" }, { status: 400 });
       }
-      const restoredRule = await rollbackPromptInjectionRevision(revisionId);
-      return NextResponse.json({ success: true, rule: restoredRule });
+      try {
+        const restoredRule = await rollbackPromptInjectionRevision(revisionId);
+        return NextResponse.json({ success: true, rule: restoredRule });
+      } catch (err) {
+        return NextResponse.json({ error: err.message || "Failed to rollback revision" }, { status: 400 });
+      }
     }
 
     // Full gateway pipeline simulation
@@ -70,7 +75,10 @@ export async function POST(request) {
         model: (body.model || "").includes("/") ? body.model.split("/")[1] : body.model || "gpt-4o",
       };
 
-      const injectionRes = await applyPromptInjectionsToBody(sampleBody, context, { skipHitTracking: true });
+      const injectionRes = await applyPromptInjectionsToBody(sampleBody, context, {
+        skipHitTracking: true,
+        onlyRuleId: body.ruleId || undefined,
+      });
       return NextResponse.json({
         modified: injectionRes.modified,
         injectedRules: injectionRes.injectedRules,
@@ -91,16 +99,20 @@ export async function POST(request) {
       const testContext = context || { modelStr: "gpt-4o" };
       const userText = testContext.userText !== undefined ? testContext.userText : extractUserText(testBody);
 
-      const matches = await isRuleMatching(rule, { ...testContext, userText });
+      const evalRes = await evaluateRuleMatch(rule, { ...testContext, userText });
       let promptText = "";
-      if (matches && rule?.content) {
+      let didMutate = false;
+      if (evalRes.matches && rule?.content) {
         promptText = interpolateVariables(rule.content, testContext);
-        executeInjection(testBody, rule.position, promptText);
+        const mutRes = executeInjection(testBody, rule.position, promptText, testContext);
+        didMutate = !!mutRes?.mutated;
       }
 
       return NextResponse.json({
-        matches,
+        matches: evalRes.matches,
+        reason: evalRes.reason,
         promptText,
+        didMutate,
         resultBody: testBody,
       });
     }

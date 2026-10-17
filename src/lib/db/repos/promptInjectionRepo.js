@@ -55,7 +55,7 @@ function rowToRule(row) {
     // "system_prepend" | "system_append" | "system_override" | "user_prepend" | "user_append"
     position: val.position || "system_prepend",
     content: typeof val.content === "string" ? val.content : "",
-    priority: Number.isFinite(val.priority) ? val.priority : 10,
+    priority: Number.isFinite(Number(val.priority)) ? Number(val.priority) : 10,
     hitCount: Number.isFinite(val.hitCount) ? val.hitCount : 0,
     lastTriggeredAt: val.lastTriggeredAt || null,
     createdAt: val.createdAt || new Date().toISOString(),
@@ -154,9 +154,18 @@ export async function updatePromptInjection(id, data) {
   if (!existing) return null;
 
   const now = new Date().toISOString();
+  const numPriority = data.priority !== undefined ? Number(data.priority) : existing.priority;
+  const safePriority = Number.isFinite(numPriority) ? numPriority : existing.priority;
+
   const updated = {
     ...existing,
-    ...data,
+    name: typeof data.name === "string" ? data.name.trim() : existing.name,
+    description: typeof data.description === "string" ? data.description.trim() : existing.description,
+    enabled: typeof data.enabled === "boolean" ? data.enabled : existing.enabled,
+    targetType: data.targetType || existing.targetType,
+    position: data.position || existing.position,
+    content: typeof data.content === "string" ? data.content : existing.content,
+    priority: safePriority,
     id,
     targetCombos: Array.isArray(data.targetCombos)
       ? data.targetCombos.map((s) => String(s).trim()).filter(Boolean)
@@ -332,7 +341,25 @@ export async function rollbackPromptInjectionRevision(revisionId) {
   if (!row) throw new Error("Revision snapshot not found");
 
   const rev = parseJson(row.value, null);
-  if (!rev || !rev.snapshot || !rev.snapshot.id) throw new Error("Invalid revision snapshot data");
+  if (!rev || !rev.snapshot) throw new Error("Invalid revision snapshot data");
+
+  if (rev.action === "reorder") {
+    const ids = rev.snapshot?.orderedIds;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      throw new Error("Invalid reorder snapshot data");
+    }
+    await reorderPromptInjections(ids);
+    recordPromptInjectionRevision({
+      ruleId: "reorder",
+      ruleName: "Studio Reordering",
+      action: "rollback",
+      snapshot: { orderedIds: ids },
+      summary: `Rolled back to previous rule order (${ids.length} rules)`,
+    }).catch(() => {});
+    return { success: true, action: "reorder_rollback", count: ids.length };
+  }
+
+  if (!rev.snapshot.id) throw new Error("Invalid revision snapshot data");
 
   const targetId = rev.snapshot.id;
   const now = new Date().toISOString();
@@ -341,11 +368,13 @@ export async function rollbackPromptInjectionRevision(revisionId) {
     updatedAt: now,
   };
 
-  db.run(
-    `INSERT INTO kv(scope, key, value) VALUES(?, ?, ?)
-     ON CONFLICT(scope, key) DO UPDATE SET value = excluded.value`,
-    [SCOPE, targetId, stringifyJson(restored)]
-  );
+  db.transaction(() => {
+    db.run(
+      `INSERT INTO kv(scope, key, value) VALUES(?, ?, ?)
+       ON CONFLICT(scope, key) DO UPDATE SET value = excluded.value`,
+      [SCOPE, targetId, stringifyJson(restored)]
+    );
+  });
   invalidatePromptInjectionCache();
 
   await recordPromptInjectionRevision({
@@ -368,13 +397,16 @@ export async function recordRuleHits(ruleIds) {
     const db = await getAdapter();
     const now = new Date().toISOString();
     for (const id of ruleIds) {
-      const row = db.get(`SELECT value FROM kv WHERE scope = ? AND key = ?`, [SCOPE, id]);
-      if (row) {
-        const val = parseJson(row.value, {});
-        val.hitCount = (Number(val.hitCount) || 0) + 1;
-        val.lastTriggeredAt = now;
-        db.run(`UPDATE kv SET value = ? WHERE scope = ? AND key = ?`, [stringifyJson(val), SCOPE, id]);
-      }
+      db.run(
+        `UPDATE kv 
+         SET value = json_set(
+           value, 
+           '$.hitCount', coalesce(json_extract(value, '$.hitCount'), 0) + 1,
+           '$.lastTriggeredAt', ?
+         ) 
+         WHERE scope = ? AND key = ?`,
+        [now, SCOPE, id]
+      );
     }
     // Mirror update into in-memory cache directly
     if (memoryCache) {
@@ -423,6 +455,7 @@ export function extractUserText(body) {
       .map((i) => (typeof i.content === "string" ? i.content : ""))
       .join("\n");
   }
+  if (typeof body.prompt === "string") return body.prompt;
   return "";
 }
 
@@ -467,7 +500,8 @@ export function evaluateConditionNode(
   }
 
   const op = cond.operator || cond.type || "contains";
-  const val = (cond.value !== undefined ? cond.value : cond.pattern || "").trim();
+  const rawVal = cond.value !== undefined && cond.value !== null ? cond.value : cond.pattern || "";
+  const val = typeof rawVal === "string" ? rawVal.trim() : String(rawVal).trim();
   const isCase = !!cond.caseSensitive;
 
   if (op === "always") return { matches: true, reason: "Always matches" };
@@ -528,7 +562,11 @@ export function evaluateConditionNode(
     case "regex": {
       try {
         if (val.length > 250) return { matches: false, reason: "Regex pattern exceeds 250 character limit" };
-        if (/(\([^\)]*[*+]\)[*+])|(\[[^\]]*[*+]\)[*+])/.test(val)) {
+        if (
+          /(\([^\)]*[*+]\)[*+])|(\[[^\]]*[*+\]][*+])|(\([^)]*\|[^)]*\)[*+])|(\([^\)]*[*+]\)\{[^}]+\})|(\([^\)]*\{[^}]+\}\)[*+])/.test(
+            val
+          )
+        ) {
           return { matches: false, reason: "Potentially catastrophic regex pattern rejected" };
         }
         const flags = isCase ? "" : "i";
@@ -544,7 +582,7 @@ export function evaluateConditionNode(
       }
     }
     default:
-      return { matches: true, reason: "Default condition match" };
+      return { matches: false, reason: `Unsupported condition operator "${op}"` };
   }
 }
 
@@ -685,10 +723,11 @@ export function interpolateVariables(template, { modelStr = "", provider = "", m
   const weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const weekdayStr = weekdays[now.getDay()];
   const effectiveModel = modelStr || (provider && model ? `${provider}/${model}` : model || "");
+  const effectiveProvider = provider || (modelStr && modelStr.includes("/") ? modelStr.split("/")[0] : "");
 
   return template
     .replaceAll("{{model}}", effectiveModel)
-    .replaceAll("{{provider}}", provider || "")
+    .replaceAll("{{provider}}", effectiveProvider)
     .replaceAll("{{comboName}}", comboName || "")
     .replaceAll("{{weekday}}", weekdayStr)
     .replaceAll("{{date}}", dateStr)
@@ -707,9 +746,13 @@ export async function applyPromptInjectionsToBody(body, context = {}, options = 
     }
 
     // Fast in-memory cache for zero disk latency
-    const rules = await getPromptInjections(true);
+    let rules = await getPromptInjections(true);
     if (!rules || rules.length === 0) {
       return { modified: false, injectedRules: [], appliedRules: [], skippedRules: [], trace: [] };
+    }
+
+    if (options.onlyRuleId) {
+      rules = rules.filter((r) => r.id === options.onlyRuleId);
     }
 
     // Non-enumerable tracker on body to guarantee zero leakage to upstream LLM APIs
@@ -770,7 +813,20 @@ export async function applyPromptInjectionsToBody(body, context = {}, options = 
         continue;
       }
 
-      executeInjection(body, rule.position, promptText, enrichedContext);
+      const mutationRes = executeInjection(body, rule.position, promptText, enrichedContext);
+      if (!mutationRes?.mutated) {
+        const failureReason = mutationRes?.reason || "Payload was not mutated by rule position";
+        skippedRules.push({ id: rule.id, name: rule.name, reason: failureReason });
+        trace.push({
+          id: rule.id,
+          name: rule.name,
+          priority: rule.priority,
+          matched: false,
+          reason: failureReason,
+        });
+        continue;
+      }
+
       body._appliedPromptInjections.push(rule.id);
       appliedRuleNames.push(rule.name || rule.id);
       appliedRuleIds.push(rule.id);
@@ -813,7 +869,7 @@ export async function applyPromptInjectionsToBody(body, context = {}, options = 
  * Execute actual mutation on body based on position with wire protocol awareness
  */
 export function executeInjection(body, position, promptText, context = {}) {
-  if (!body || !promptText) return;
+  if (!body || !promptText) return { mutated: false, reason: "Missing body or promptText" };
 
   const pos = position || "system_prepend";
   const isAnthropicFormat = typeof body.system !== "undefined" ||
@@ -830,31 +886,32 @@ export function executeInjection(body, position, promptText, context = {}) {
     // Claude / Anthropic format (takes precedence when body.system is defined or target is Anthropic)
     if (typeof body.system === "string") {
       body.system = `${promptText}\n\n${body.system}`;
-      return;
+      return { mutated: true };
     }
     if (Array.isArray(body.system)) {
       body.system.unshift({ type: "text", text: promptText });
-      return;
+      return { mutated: true };
     }
     if (isAnthropicFormat) {
       body.system = promptText;
-      return;
+      return { mutated: true };
     }
 
     // OpenAI Responses / instructions
     if (typeof body.instructions === "string") {
       body.instructions = `${promptText}\n\n${body.instructions}`;
-      return;
+      return { mutated: true };
     }
 
-    // Gemini system_instruction format
-    if (body.system_instruction && Array.isArray(body.system_instruction.parts)) {
-      body.system_instruction.parts.unshift({ text: promptText });
-      return;
+    // Gemini system_instruction / systemInstruction format
+    const geminiSys = body.systemInstruction || body.system_instruction;
+    if (geminiSys && Array.isArray(geminiSys.parts)) {
+      geminiSys.parts.unshift({ text: promptText });
+      return { mutated: true };
     }
-    if (body.contents && !body.system_instruction) {
+    if (body.contents && !geminiSys) {
       body.system_instruction = { parts: [{ text: promptText }] };
-      return;
+      return { mutated: true };
     }
 
     // OpenAI Chat format
@@ -870,13 +927,15 @@ export function executeInjection(body, position, promptText, context = {}) {
       } else {
         body.messages.unshift({ role: "system", content: promptText });
       }
-      return;
+      return { mutated: true };
     }
 
     if (body.system === undefined && !Array.isArray(body.messages) && !body.contents) {
       body.system = promptText;
-      return;
+      return { mutated: true };
     }
+
+    return { mutated: false, reason: "No suitable container found for system_prepend" };
   }
 
   // 2. SYSTEM APPEND
@@ -884,31 +943,32 @@ export function executeInjection(body, position, promptText, context = {}) {
     // Claude / Anthropic format
     if (typeof body.system === "string") {
       body.system = `${body.system}\n\n${promptText}`;
-      return;
+      return { mutated: true };
     }
     if (Array.isArray(body.system)) {
       body.system.push({ type: "text", text: promptText });
-      return;
+      return { mutated: true };
     }
     if (isAnthropicFormat) {
       body.system = promptText;
-      return;
+      return { mutated: true };
     }
 
     // OpenAI Responses
     if (typeof body.instructions === "string") {
       body.instructions = body.instructions ? `${body.instructions}\n\n${promptText}` : promptText;
-      return;
+      return { mutated: true };
     }
 
     // Gemini
-    if (body.system_instruction && Array.isArray(body.system_instruction.parts)) {
-      body.system_instruction.parts.push({ text: promptText });
-      return;
+    const geminiSys = body.systemInstruction || body.system_instruction;
+    if (geminiSys && Array.isArray(geminiSys.parts)) {
+      geminiSys.parts.push({ text: promptText });
+      return { mutated: true };
     }
-    if (body.contents && !body.system_instruction) {
+    if (body.contents && !geminiSys) {
       body.system_instruction = { parts: [{ text: promptText }] };
-      return;
+      return { mutated: true };
     }
 
     // OpenAI Chat messages
@@ -924,13 +984,15 @@ export function executeInjection(body, position, promptText, context = {}) {
       } else {
         body.messages.unshift({ role: "system", content: promptText });
       }
-      return;
+      return { mutated: true };
     }
 
     if (body.system === undefined && !Array.isArray(body.messages) && !body.contents) {
       body.system = promptText;
-      return;
+      return { mutated: true };
     }
+
+    return { mutated: false, reason: "No suitable container found for system_append" };
   }
 
   // 3. SYSTEM OVERRIDE
@@ -938,30 +1000,34 @@ export function executeInjection(body, position, promptText, context = {}) {
     // Claude format
     if (body.system !== undefined || isAnthropicFormat) {
       body.system = promptText;
-      return;
+      return { mutated: true };
     }
 
     // Responses format
     if (body.instructions !== undefined) {
       body.instructions = promptText;
-      return;
+      return { mutated: true };
     }
 
     // Gemini format
     if (body.contents) {
-      body.system_instruction = { parts: [{ text: promptText }] };
-      return;
+      if (body.system_instruction) {
+        body.system_instruction = { parts: [{ text: promptText }] };
+      } else {
+        body.systemInstruction = { parts: [{ text: promptText }] };
+      }
+      return { mutated: true };
     }
 
     // OpenAI Chat
     if (Array.isArray(body.messages)) {
       body.messages = body.messages.filter((m) => m && m.role !== "system" && m.role !== "developer");
       body.messages.unshift({ role: "system", content: promptText });
-      return;
+      return { mutated: true };
     }
 
     body.system = promptText;
-    return;
+    return { mutated: true };
   }
 
   // 4. USER PREPEND
@@ -970,15 +1036,19 @@ export function executeInjection(body, position, promptText, context = {}) {
       for (let i = body.messages.length - 1; i >= 0; i--) {
         const m = body.messages[i];
         if (m && m.role === "user") {
+          if (Array.isArray(m.content) && m.content.length > 0 && m.content.every((b) => b && b.type === "tool_result")) {
+            continue;
+          }
           if (typeof m.content === "string") {
             m.content = `${promptText}\n\n${m.content}`;
+            return { mutated: true };
           } else if (Array.isArray(m.content)) {
             m.content.unshift({ type: "text", text: promptText });
+            return { mutated: true };
           }
-          break;
         }
       }
-      return;
+      return { mutated: false, reason: "No suitable user message turn found to prepend" };
     }
 
     if (Array.isArray(body.contents)) {
@@ -986,11 +1056,13 @@ export function executeInjection(body, position, promptText, context = {}) {
         const turn = body.contents[i];
         if (turn && turn.role === "user" && Array.isArray(turn.parts)) {
           turn.parts.unshift({ text: promptText });
-          break;
+          return { mutated: true };
         }
       }
-      return;
+      return { mutated: false, reason: "No user content turn found in Gemini payload to prepend" };
     }
+
+    return { mutated: false, reason: "No messages or contents array found" };
   }
 
   // 5. USER APPEND
@@ -999,15 +1071,19 @@ export function executeInjection(body, position, promptText, context = {}) {
       for (let i = body.messages.length - 1; i >= 0; i--) {
         const m = body.messages[i];
         if (m && m.role === "user") {
+          if (Array.isArray(m.content) && m.content.length > 0 && m.content.every((b) => b && b.type === "tool_result")) {
+            continue;
+          }
           if (typeof m.content === "string") {
             m.content = `${m.content}\n\n${promptText}`;
+            return { mutated: true };
           } else if (Array.isArray(m.content)) {
             m.content.push({ type: "text", text: promptText });
+            return { mutated: true };
           }
-          break;
         }
       }
-      return;
+      return { mutated: false, reason: "No suitable user message turn found to append" };
     }
 
     if (Array.isArray(body.contents)) {
@@ -1015,10 +1091,14 @@ export function executeInjection(body, position, promptText, context = {}) {
         const turn = body.contents[i];
         if (turn && turn.role === "user" && Array.isArray(turn.parts)) {
           turn.parts.push({ text: promptText });
-          break;
+          return { mutated: true };
         }
       }
-      return;
+      return { mutated: false, reason: "No user content turn found in Gemini payload to append" };
     }
+
+    return { mutated: false, reason: "No messages or contents array found" };
   }
+
+  return { mutated: false, reason: `Unsupported position "${pos}"` };
 }

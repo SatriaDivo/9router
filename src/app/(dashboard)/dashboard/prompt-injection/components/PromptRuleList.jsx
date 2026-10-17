@@ -66,6 +66,22 @@ export function PromptRuleList({
   }
 
   if (rules.length === 0) {
+    if (isFiltered) {
+      return (
+        <div className="py-16 text-center border border-dashed border-border/70 rounded-2xl p-8 bg-surface/30 flex flex-col items-center justify-center gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-surface-hover flex items-center justify-center text-text-muted">
+            <span className="material-symbols-outlined text-[28px]">filter_alt_off</span>
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-text">No rules match your filters</h3>
+            <p className="text-xs text-text-muted max-w-sm mt-1">
+              Try adjusting your search query, scope filter, or position filter to see more rules.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="py-16 text-center border border-dashed border-border/70 rounded-2xl p-8 bg-surface/30 flex flex-col items-center justify-center gap-3">
         <div className="w-12 h-12 rounded-2xl bg-surface-hover flex items-center justify-center text-text-muted">
