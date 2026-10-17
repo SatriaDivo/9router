@@ -13,96 +13,102 @@ export function PromptInjectionHeader({
   loading,
 }) {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-border/40">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-border/40">
+      {/* Title & Description Block */}
+      <div className="flex items-start sm:items-center gap-3.5">
+        <div className="w-11 h-11 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 shadow-2xs">
           <span className="material-symbols-outlined text-[24px] text-primary">tune</span>
         </div>
         <div>
-          <h1 className="text-xl font-bold text-text flex items-center gap-2">
-            Prompt Injection Studio
-            <span className="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h1 className="text-xl font-bold text-text tracking-tight">
+              Prompt Injection Studio
+            </h1>
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 shadow-2xs">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               Active Gateway
             </span>
-          </h1>
-          <p className="text-xs text-text-muted mt-0.5">
-            Intercept, mutate, and enforce system and user prompts across LLM routes with zero latency
+          </div>
+          <p className="text-xs text-text-muted mt-1 leading-normal max-w-xl">
+            Intercept, mutate, and enforce system and user prompts across LLM routes with zero latency.
           </p>
         </div>
       </div>
 
-      <div className="flex items-center flex-wrap gap-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onRefresh}
-          disabled={loading}
-          className="gap-1.5 text-text-muted hover:text-text"
-          title="Refresh Rules"
-        >
-          <span className={`material-symbols-outlined text-[18px] ${loading ? "animate-spin" : ""}`}>
-            refresh
-          </span>
-        </Button>
+      {/* Action Toolbar */}
+      <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap justify-start lg:justify-end shrink-0">
+        {/* Utility Group: Refresh, History, Import, Export */}
+        <div className="flex items-center bg-surface-2 border border-border/60 rounded-xl p-1 gap-0.5 shadow-2xs">
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={loading}
+            className="p-1.5 rounded-lg text-text-muted hover:text-text hover:bg-surface transition-colors disabled:opacity-50"
+            title="Refresh Rules"
+          >
+            <span className={`material-symbols-outlined text-[18px] block ${loading ? "animate-spin" : ""}`}>
+              refresh
+            </span>
+          </button>
 
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onImport}
-          className="gap-1.5 text-text-muted hover:text-text"
-          title="Import Rules from JSON"
-        >
-          <span className="material-symbols-outlined text-[18px]">upload</span>
-          <span className="hidden md:inline">Import</span>
-        </Button>
+          <button
+            type="button"
+            onClick={onOpenHistory}
+            className="p-1.5 rounded-lg text-text-muted hover:text-text hover:bg-surface transition-colors"
+            title="Studio Revision History & Audit Trail"
+          >
+            <span className="material-symbols-outlined text-[18px] block">history</span>
+          </button>
 
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onExport}
-          className="gap-1.5 text-text-muted hover:text-text"
-          title="Export Rules as JSON"
-        >
-          <span className="material-symbols-outlined text-[18px]">download</span>
-          <span className="hidden md:inline">Export</span>
-        </Button>
+          <div className="w-[1px] h-4 bg-border/60 mx-0.5" />
 
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onOpenHistory}
-          className="gap-1.5 text-text-muted hover:text-text"
-          title="View Studio Revision History & Audit Trail"
-        >
-          <span className="material-symbols-outlined text-[18px]">history</span>
-          <span className="hidden md:inline">History</span>
-        </Button>
+          <button
+            type="button"
+            onClick={onImport}
+            className="p-1.5 rounded-lg text-text-muted hover:text-text hover:bg-surface transition-colors"
+            title="Import Rules from JSON"
+          >
+            <span className="material-symbols-outlined text-[18px] block">upload</span>
+          </button>
 
+          <button
+            type="button"
+            onClick={onExport}
+            className="p-1.5 rounded-lg text-text-muted hover:text-text hover:bg-surface transition-colors"
+            title="Export Rules as JSON"
+          >
+            <span className="material-symbols-outlined text-[18px] block">download</span>
+          </button>
+        </div>
+
+        {/* Templates Modal Button */}
         <Button
           variant="secondary"
           size="sm"
           onClick={onOpenTemplates}
-          className="gap-1.5"
+          className="h-9 px-3 gap-1.5 text-xs font-medium"
         >
           <span className="material-symbols-outlined text-[18px]">auto_stories</span>
           <span>Templates</span>
         </Button>
 
+        {/* Simulator Button */}
         <Button
           variant="secondary"
           size="sm"
           onClick={onOpenPlayground}
-          className="gap-1.5 border-primary/20 text-primary hover:bg-primary/5"
+          className="h-9 px-3 gap-1.5 text-xs font-medium border-primary/30 text-primary hover:bg-primary/5"
         >
           <span className="material-symbols-outlined text-[18px]">play_arrow</span>
           <span>Simulator</span>
         </Button>
 
+        {/* Primary CTA: New Rule */}
         <Button
           variant="primary"
           size="sm"
           onClick={onNewRule}
-          className="gap-1.5 shadow-sm shadow-primary/20"
+          className="h-9 px-3.5 gap-1.5 text-xs font-semibold shadow-xs shadow-primary/20 shrink-0"
         >
           <span className="material-symbols-outlined text-[18px]">add</span>
           <span>New Rule</span>
